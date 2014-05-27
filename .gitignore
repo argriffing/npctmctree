@@ -1,0 +1,14 @@
+# compiled source
+*.pyc
+
+# setup.py working directory
+.buildinfo
+build
+
+# directory and file created by a coverage script
+htmlcov
+*.coverage
+
+# log files
+*.log
+
