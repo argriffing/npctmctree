@@ -39,7 +39,7 @@ def get_tree_info():
 
 
 def main():
-    np.random.seed(1234)
+    np.random.seed(12345)
 
     # Define the size of the state space
     # which will be constant across the whole tree.
@@ -201,7 +201,9 @@ def main():
             old_rate = guess_edge_to_rate[edge] 
             new_rate = old_rate * ratio
             guess_edge_to_rate[edge] = new_rate
-            print(edge, trans, dwell, ratio, old_rate, new_rate)
+            #print(edge, trans, dwell, ratio, old_rate, new_rate)
+            print(edge, new_rate)
+        print()
 
 
 if __name__ == '__main__':
