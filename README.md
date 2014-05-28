@@ -5,7 +5,8 @@ Required dependencies:
  * [pip](https://pip.readthedocs.org/) (installation)
  * [git](http://git-scm.com/) (installation)
  * [numpy](http://www.numpy.org/)
- * [NetworkX](http:/networkx.lanl.gov/) (graph data types and algorithms)
+ * [scipy](http://docs.scipy.org/doc/)
+ * [NetworkX](http://networkx.lanl.gov/) (graph data types and algorithms)
    - `$ pip install --user git+https://github.com/networkx/networkx`
 
 Optional dependencies:
