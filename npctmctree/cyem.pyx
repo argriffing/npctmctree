@@ -111,9 +111,9 @@ def expectation_step(
         idx_t[:] csr_indices, # (nnodes-1,)
         idx_t[:] csr_indptr, # (nnodes+1,)
         cnp.float_t[:, :, :] transp, # (nnodes-1, nstates, nstates)
-        cnp.float_t[:, :, :] transq # (nnodes-1, nstates, nstates)
-        cnp.float_t[:, :, :] interact_trans # (nnodes-1, nstates, nstates)
-        cnp.float_t[:, :, :] interact_dwell # (nnodes-1, nstates, nstates)
+        cnp.float_t[:, :, :] transq, # (nnodes-1, nstates, nstates)
+        cnp.float_t[:, :, :] interact_trans, # (nnodes-1, nstates, nstates)
+        cnp.float_t[:, :, :] interact_dwell, # (nnodes-1, nstates, nstates)
         cnp.float_t[:, :, :] data, # (nsites, nnodes, nstates)
         cnp.float_t[:] site_weights, # (nsites,)
         cnp.float_t[:] root_distn, # (nstates,)
@@ -172,7 +172,7 @@ def expectation_step(
         assert_csr_tree(csr_indices, csr_indptr, nnodes)
 
     # Declare some variables for iterating over edges.
-    cdef int j
+    cdef int i, j
     cdef idx_t indstart, indstop
     cdef idx_t na, nb, eidx
 
@@ -181,9 +181,9 @@ def expectation_step(
     cdef int sa, sb
 
     # Allocate workspace for partial likelihoods and posterior distributions.
-    cnp.float_t[:, :] lhood = np.empty((nnodes, nstates), dtype=float)
-    cnp.float_t[:, :] post = np.empty((nnodes, nstates), dtype=float)
-    cnp.float_t[:] cond = np.empty(nstates, dtype=float)
+    cdef cnp.float_t[:, :] lhood = np.empty((nnodes, nstates), dtype=float)
+    cdef cnp.float_t[:, :] post = np.empty((nnodes, nstates), dtype=float)
+    cdef cnp.float_t[:] cond = np.empty(nstates, dtype=float)
 
     # multiplicative and additive accumulators
     cdef float multiplicative_prob, additive_prob
@@ -224,7 +224,8 @@ def expectation_step(
                         # Compute the additive probability for the edge.
                         additive_prob = 0 
                         for sb in range(nstates):
-                            additive_prob += trans[eidx, sa, sb] * lhood[nb, sb]
+                            additive_prob += (
+                                    transp[eidx, sa, sb] * lhood[nb, sb])
 
                         # Contribute the probability associated with the edge.
                         multiplicative_prob *= additive_prob
@@ -270,7 +271,7 @@ def expectation_step(
                         for sb in range(nstates):
 
                             # Compute the posterior joint probability.
-                            joint = post[sa] * cond[sb]
+                            joint = post[na, sa] * cond[sb]
                             if not joint:
                                 continue
 
