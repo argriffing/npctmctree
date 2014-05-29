@@ -74,7 +74,7 @@ def do_cythonized_em(T, root,
     transq = np.empty((nnodes-1, nstates, nstates), dtype=float)
     for (na, nb), Q in edge_to_Q.items():
         edge_idx = node_to_idx[nb] - 1
-        transq[edge_idx, :, :] = Q
+        transq[edge_idx] = Q
 
     # Allocate a transition probability matrix array
     # and some interaction matrix arrays.
@@ -90,7 +90,7 @@ def do_cythonized_em(T, root,
     data = np.empty((nsites, nnodes, nstates), dtype=float)
     for site_index, site_data in enumerate(datas):
         for i, na in enumerate(nodes):
-            data[site_index, i, :] = site_data[na]
+            data[site_index, i] = site_data[na]
 
     # Initialize expectation arrays.
     trans_out = np.empty((nsites, nnodes-1), dtype=float)
@@ -100,11 +100,11 @@ def do_cythonized_em(T, root,
     scaling_guesses = np.empty(nnodes-1, dtype=float)
     scaling_ratios = np.ones(nnodes-1, dtype=float)
     for (na, nb), rate in guess_edge_to_rate.items():
-        edge_idx = node_to_idx[nb] - 1
-        scaling_guesses[edge_idx] = rate
+        eidx = node_to_idx[nb] - 1
+        scaling_guesses[eidx] = rate
 
     # Do the EM iterations.
-    nsteps = 10
+    nsteps = 3
     for em_iteration_index in range(nsteps):
 
         # Scale the rate matrices according to the edge ratios.
@@ -136,14 +136,16 @@ def do_cythonized_em(T, root,
                 )
 
         # Compute the per-edge ratios.
-        trans_sum = trans_out.sum(axis=0)
-        dwell_sum = dwell_out.sum(axis=0)
+        trans_sum = (trans_out * site_weights[:, None]).sum(axis=0)
+        dwell_sum = (dwell_out * site_weights[:, None]).sum(axis=0)
         scaling_ratios = trans_sum / -dwell_sum
         scaling_guesses *= scaling_ratios
 
         # Report the guesses.
-        print('guesses:')
-        print(scaling_guesses)
+        for edge in T.edges():
+            na, nb = edge
+            eidx = node_to_idx[nb] - 1
+            print(edge, trans_sum[eidx], dwell_sum[eidx], scaling_guesses[eidx])
         print()
 
 
@@ -153,7 +155,7 @@ def do_em(T, root, edge_to_rate, edge_to_Q, root_distn1d,
     n = root_distn1d.shape[0]
 
     # Do the EM iterations.
-    nsteps = 10
+    nsteps = 3
     for em_iteration_index in range(nsteps):
         
         # Compute the scaled edge-specific transition rate matrices.
@@ -241,7 +243,7 @@ def do_em(T, root, edge_to_rate, edge_to_Q, root_distn1d,
             new_rate = old_rate * ratio
             guess_edge_to_rate[edge] = new_rate
             #print(edge, trans, dwell, ratio, old_rate, new_rate)
-            print(edge, new_rate)
+            print(edge, trans, dwell, new_rate)
         print()
 
 
@@ -250,7 +252,7 @@ def main():
 
     # Define the size of the state space
     # which will be constant across the whole tree.
-    n = 4
+    n = 5
 
     # Sample a random root distribution as a 1d numpy array.
     pzero = 0
@@ -321,8 +323,8 @@ def main():
     for edge in T.edges():
         guess_edge_to_rate[edge] = 0.2
 
-    #f = do_em
-    f = do_cythonized_em
+    f = do_em
+    #f = do_cythonized_em
     f(T, root, edge_to_rate, edge_to_Q, root_distn1d,
             data_prob_pairs, guess_edge_to_rate)
 

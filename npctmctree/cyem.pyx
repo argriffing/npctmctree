@@ -188,7 +188,8 @@ def expectation_step(
     cdef float multiplicative_prob, additive_prob
     cdef float accum, joint, coeff
 
-    with nogil:
+    #with nogil:
+    for foo in range(1):
 
         # Clear the expectation accumulators.
         for c in range(nsites):
