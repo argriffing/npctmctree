@@ -34,7 +34,7 @@ ctypedef fused idx_t:
     cnp.int64_t
 
 
-__all__ = ['assert_csr_tree', 'esd_site_first_pass']
+#__all__ = ['assert_csr_tree', 'esd_site_first_pass']
 
 
 def assert_shape_equal(arr, desired_shape):
@@ -183,22 +183,11 @@ def expectation_step(
     # Allocate workspace for partial likelihoods and posterior distributions.
     cnp.float_t[:, :] lhood = np.empty((nnodes, nstates), dtype=float)
     cnp.float_t[:, :] post = np.empty((nnodes, nstates), dtype=float)
-
-    """
-    idx_t[:] csr_indices, # (nnodes-1,)
-    idx_t[:] csr_indptr, # (nnodes+1,)
-    cnp.float_t[:, :, :] transp, # (nnodes-1, nstates, nstates)
-    cnp.float_t[:, :, :] transq # (nnodes-1, nstates, nstates)
-    cnp.float_t[:, :, :] data, # (nsites, nnodes, nstates)
-    cnp.float_t[:, :] edge_factors, # (nnodes-1,)
-    cnp.float_t[:] root_distn, # (nstates,)
-    cnp.float_t[:, :] trans_out, # (nsites, nnodes-1)
-    cnp.float_t[:, :] dwell_out, # (nsites, nnodes-1)
-    int validation=1,
-    """
+    cnp.float_t[:] cond = np.empty(nstates, dtype=float)
 
     # multiplicative and additive accumulators
-    cdef float multiplicative_prob, additive_prob, accum
+    cdef float multiplicative_prob, additive_prob
+    cdef float accum, joint, coeff
 
     with nogil:
 
@@ -261,14 +250,40 @@ def expectation_step(
             for na in range(nnodes):
                 indstart = csr_indptr[na]
                 indstop = csr_indptr[na+1]
-                for sa in range(nstates):
-                    multiplicative_prob = data[c, na, sa]
-                    for j in range(indstart, indstop):
+                for j in range(indstart, indstop):
+                    nb = csr_indices[j]
+                    eidx = nb - 1
 
-                        # Compute the tail node index and the edge index.
-                        nb = csr_indices[j]
-                        eidx = nb - 1
+                    # Iterate over head node states.
+                    for sa in range(nstates):
 
+                        # Compute the conditional posterior distribution
+                        # over tail node states.
+                        accum = 0
+                        for sb in range(nstates):
+                            cond[sb] = transp[eidx, sa, sb] * lhood[nb, sb]
+                            accum += cond[sb]
+                        for sb in range(nstates):
+                            cond[sb] /= accum
+
+                        # Iterate over joint states on the edge.
+                        for sb in range(nstates):
+
+                            # Compute the posterior joint probability.
+                            joint = post[sa] * cond[sb]
+                            if not joint:
+                                continue
+
+                            # Contribute to the expectations.
+                            coeff = joint / transp[eidx, sa, sb]
+                            trans_out[c, eidx] += (
+                                coeff * interact_trans[eidx, sa, sb])
+                            dwell_out[c, eidx] += (
+                                coeff * interact_dwell[eidx, sa, sb])
+
+                            # Contribute to the marginal posterior distribution
+                            # over tail node states.
+                            post[nb, sb] += joint
 
     return 0
 
