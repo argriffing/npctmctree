@@ -12,7 +12,7 @@ from scipy.linalg import expm, expm_frechet
 
 import npmctree
 from npmctree.puzzles import sample_distn1d
-#from npmctree.dynamic_fset_lhood import get_lhood, get_edge_to_distn2d
+from npmctree.dynamic_fset_lhood import get_lhood, get_edge_to_distn2d
 #from npmctree.cy_dynamic_lmap_lhood import get_lhood, get_edge_to_distn2d
 
 import npctmctree
@@ -42,15 +42,115 @@ def get_tree_info():
     return T, root, edge_to_rate
 
 
-def do_em(T, root, edge_to_rate, edge_to_Q, root_distn1d, data_prob_pairs):
+def do_cythonized_em(T, root,
+        edge_to_rate, edge_to_Q, root_distn1d,
+        data_prob_pairs, guess_edge_to_rate):
+    """
+    Try the Cython implementation.
+    def expectation_step(
+            idx_t[:] csr_indices, # (nnodes-1,)
+            idx_t[:] csr_indptr, # (nnodes+1,)
+            cnp.float_t[:, :, :] transp, # (nnodes-1, nstates, nstates)
+            cnp.float_t[:, :, :] transq, # (nnodes-1, nstates, nstates)
+            cnp.float_t[:, :, :] interact_trans, # (nnodes-1, nstates, nstates)
+            cnp.float_t[:, :, :] interact_dwell, # (nnodes-1, nstates, nstates)
+            cnp.float_t[:, :, :] data, # (nsites, nnodes, nstates)
+            cnp.float_t[:] root_distn, # (nstates,)
+            cnp.float_t[:, :] trans_out, # (nsites, nnodes-1)
+            cnp.float_t[:, :] dwell_out, # (nsites, nnodes-1)
+            int validation=1,
+            ):
+
+    """
+    # Define a toposort node ordering and a corresponding csr matrix.
+    nodes = nx.topological_sort(T, [root])
+    node_to_idx = dict((na, i) for i, na in enumerate(nodes))
+    m = nx.to_scipy_sparse_matrix(T, nodes)
+
+    # Stack the transition rate matrices into a single array.
+    nnodes = len(nodes)
+    nstates = root_distn1d.shape[0]
+    n = nstates
+    transq = np.empty((nnodes-1, nstates, nstates), dtype=float)
+    for (na, nb), Q in edge_to_Q.items():
+        edge_idx = node_to_idx[nb] - 1
+        transq[edge_idx, :, :] = Q
+
+    # Allocate a transition probability matrix array
+    # and some interaction matrix arrays.
+    transp = np.empty_like(transq)
+    interact_trans = np.empty_like(transq)
+    interact_dwell = np.empty_like(transq)
+
+    # Stack the data into a single array,
+    # and construct an array of site weights.
+    nsites = len(data_prob_pairs)
+    datas, probs = zip(*data_prob_pairs)
+    site_weights = np.array(probs, dtype=float)
+    data = np.empty((nsites, nnodes, nstates), dtype=float)
+    for site_index, site_data in enumerate(datas):
+        for i, na in enumerate(nodes):
+            data[site_index, i, :] = site_data[na]
+
+    # Initialize expectation arrays.
+    trans_out = np.empty((nsites, nnodes-1), dtype=float)
+    dwell_out = np.empty((nsites, nnodes-1), dtype=float)
+
+    # Initialize the per-edge rate matrix scaling factor guesses.
+    scaling_guesses = np.empty(nnodes-1, dtype=float)
+    scaling_ratios = np.ones(nnodes-1, dtype=float)
+    for (na, nb), rate in guess_edge_to_rate.items():
+        edge_idx = node_to_idx[nb] - 1
+        scaling_guesses[edge_idx] = rate
+
+    # Do the EM iterations.
+    nsteps = 10
+    for em_iteration_index in range(nsteps):
+
+        # Scale the rate matrices according to the edge ratios.
+        transq *= scaling_ratios[:, None, None]
+
+        # Compute the probability transition matrix arrays
+        # and the interaction matrix arrays.
+        trans_indicator = np.ones((n, n)) - np.identity(n)
+        dwell_indicator = np.identity(n)
+        for (na, nb) in T.edges():
+            eidx = node_to_idx[nb] - 1
+            Q = transq[eidx]
+            transp[eidx] = expm(Q)
+            interact_trans[eidx] = expm_frechet(
+                    Q, Q * trans_indicator, compute_expm=False)
+            interact_dwell[eidx] = expm_frechet(
+                    Q, Q * dwell_indicator, compute_expm=False)
+
+        # Compute the expectations.
+        validation = 1
+        expectation_step(
+                m.indices, m.indptr,
+                transp, transq,
+                interact_trans, interact_dwell,
+                data,
+                root_distn1d,
+                trans_out, dwell_out,
+                validation,
+                )
+
+        # Compute the per-edge ratios.
+        trans_sum = trans_out.sum(axis=0)
+        dwell_sum = dwell_out.sum(axis=0)
+        scaling_ratios = trans_sum / -dwell_sum
+        scaling_guesses *= scaling_ratios
+
+        # Report the guesses.
+        print('guesses:')
+        print(scaling_guesses)
+        print()
+
+
+def do_em(T, root, edge_to_rate, edge_to_Q, root_distn1d,
+        data_prob_pairs, guess_edge_to_rate):
     # Extract the number of states.
     n = root_distn1d.shape[0]
-
-    # Try to guess the edge-specific scaling factors using EM,
-    # starting with an initial guess that is wrong.
-    guess_edge_to_rate = {}
-    for edge in T.edges():
-        guess_edge_to_rate[edge] = 0.2
 
     # Do the EM iterations.
     nsteps = 10
@@ -215,7 +315,16 @@ def main():
     datas, probs = zip(*data_prob_pairs)
     assert_allclose(sum(probs), 1)
 
-    do_em(T, root, edge_to_rate, edge_to_Q, root_distn1d, data_prob_pairs)
+    # Try to guess the edge-specific scaling factors using EM,
+    # starting with an initial guess that is wrong.
+    guess_edge_to_rate = {}
+    for edge in T.edges():
+        guess_edge_to_rate[edge] = 0.2
+
+    #f = do_em
+    f = do_cythonized_em
+    f(T, root, edge_to_rate, edge_to_Q, root_distn1d,
+            data_prob_pairs, guess_edge_to_rate)
 
 
 

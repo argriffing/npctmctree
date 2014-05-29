@@ -115,7 +115,6 @@ def expectation_step(
         cnp.float_t[:, :, :] interact_trans, # (nnodes-1, nstates, nstates)
         cnp.float_t[:, :, :] interact_dwell, # (nnodes-1, nstates, nstates)
         cnp.float_t[:, :, :] data, # (nsites, nnodes, nstates)
-        cnp.float_t[:] site_weights, # (nsites,)
         cnp.float_t[:] root_distn, # (nstates,)
         cnp.float_t[:, :] trans_out, # (nsites, nnodes-1)
         cnp.float_t[:, :] dwell_out, # (nsites, nnodes-1)
