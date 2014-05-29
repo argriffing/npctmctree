@@ -9,8 +9,14 @@ DOCLINES = __doc__.split('\n')
 # http://docs.python.org/2/distutils/setupscript.html
 #
 # It is meant to be installed through github using pip.
+#
+# More stuff added for Cython extensions.
 
 from distutils.core import setup
+
+from distutils.extension import Extension
+
+from Cython.Distutils import build_ext
 
 setup(
         name='npctmctree',
@@ -22,6 +28,7 @@ setup(
         packages=['npctmctree'],
         test_suite='nose.collector',
         package_data={'npctmctree' : ['tests/test_*.py']},
+        cmdclass={'build_ext' : build_ext},
+        ext_modules=[Extension('npctmctree.cyem', ['npctmctree/cyem.pyx'])],
         )
-
 

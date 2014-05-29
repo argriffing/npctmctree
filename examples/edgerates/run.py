@@ -12,7 +12,8 @@ from scipy.linalg import expm, expm_frechet
 
 import npmctree
 from npmctree.puzzles import sample_distn1d
-from npmctree.dynamic_fset_lhood import get_lhood, get_edge_to_distn2d
+#from npmctree.dynamic_fset_lhood import get_lhood, get_edge_to_distn2d
+from npmctree.cy_dynamic_lmap_lhood import get_lhood, get_edge_to_distn2d
 
 
 def get_tree_info():
@@ -115,7 +116,8 @@ def main():
         guess_edge_to_rate[edge] = 0.2
 
     # Do the EM iterations.
-    while True:
+    nsteps = 10
+    for em_iteration_index in range(nsteps):
         
         # Compute the scaled edge-specific transition rate matrices.
         edge_to_scaled_Q = {}
