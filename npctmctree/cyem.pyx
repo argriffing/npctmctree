@@ -110,14 +110,14 @@ def assert_csr_tree(
 def expectation_step(
         idx_t[:] csr_indices, # (nnodes-1,)
         idx_t[:] csr_indptr, # (nnodes+1,)
-        cnp.float_t[:, :, :] transp, # (nnodes-1, nstates, nstates)
-        cnp.float_t[:, :, :] transq, # (nnodes-1, nstates, nstates)
-        cnp.float_t[:, :, :] interact_trans, # (nnodes-1, nstates, nstates)
-        cnp.float_t[:, :, :] interact_dwell, # (nnodes-1, nstates, nstates)
-        cnp.float_t[:, :, :] data, # (nsites, nnodes, nstates)
-        cnp.float_t[:] root_distn, # (nstates,)
-        cnp.float_t[:, :] trans_out, # (nsites, nnodes-1)
-        cnp.float_t[:, :] dwell_out, # (nsites, nnodes-1)
+        cnp.float64_t[:, :, :] transp, # (nnodes-1, nstates, nstates)
+        cnp.float64_t[:, :, :] transq, # (nnodes-1, nstates, nstates)
+        cnp.float64_t[:, :, :] interact_trans, # (nnodes-1, nstates, nstates)
+        cnp.float64_t[:, :, :] interact_dwell, # (nnodes-1, nstates, nstates)
+        cnp.float64_t[:, :, :] data, # (nsites, nnodes, nstates)
+        cnp.float64_t[:] root_distn, # (nstates,)
+        cnp.float64_t[:, :] trans_out, # (nsites, nnodes-1)
+        cnp.float64_t[:, :] dwell_out, # (nsites, nnodes-1)
         int validation=1,
         ):
     """
@@ -180,13 +180,13 @@ def expectation_step(
     cdef int sa, sb
 
     # Allocate workspace for partial likelihoods and posterior distributions.
-    cdef cnp.float_t[:, :] lhood = np.empty((nnodes, nstates), dtype=float)
-    cdef cnp.float_t[:, :] post = np.empty((nnodes, nstates), dtype=float)
-    cdef cnp.float_t[:] cond = np.empty(nstates, dtype=float)
+    cdef cnp.float64_t[:, :] lhood = np.empty((nnodes, nstates), dtype=float)
+    cdef cnp.float64_t[:, :] post = np.empty((nnodes, nstates), dtype=float)
+    cdef cnp.float64_t[:] cond = np.empty(nstates, dtype=float)
 
     # multiplicative and additive accumulators
-    cdef float multiplicative_prob, additive_prob
-    cdef float accum, joint, coeff
+    cdef double multiplicative_prob, additive_prob
+    cdef double accum, joint, coeff
 
     #with nogil:
     for foo in range(1):
@@ -249,6 +249,7 @@ def expectation_step(
             # and compute the posterior distribution over states
             # at the tail node.
             for na in range(nnodes):
+                print(np.sum(post[na]))
                 indstart = csr_indptr[na]
                 indstop = csr_indptr[na+1]
                 for j in range(indstart, indstop):

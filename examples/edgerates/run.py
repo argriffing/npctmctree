@@ -114,7 +114,7 @@ def do_cythonized_em(T, root,
         # and the interaction matrix arrays.
         trans_indicator = np.ones((n, n)) - np.identity(n)
         dwell_indicator = np.identity(n)
-        for (na, nb) in T.edges():
+        for na, nb in T.edges():
             eidx = node_to_idx[nb] - 1
             Q = transq[eidx]
             transp[eidx] = expm(Q)
@@ -252,7 +252,7 @@ def main():
 
     # Define the size of the state space
     # which will be constant across the whole tree.
-    n = 5
+    n = 2
 
     # Sample a random root distribution as a 1d numpy array.
     pzero = 0
@@ -323,8 +323,8 @@ def main():
     for edge in T.edges():
         guess_edge_to_rate[edge] = 0.2
 
-    f = do_em
-    #f = do_cythonized_em
+    #f = do_em
+    f = do_cythonized_em
     f(T, root, edge_to_rate, edge_to_Q, root_distn1d,
             data_prob_pairs, guess_edge_to_rate)
 
