@@ -151,11 +151,13 @@ def do_cythonized_em(T, root,
         scaling_guesses *= scaling_ratios
 
         # Report the guesses.
-        for edge in T.edges():
-            na, nb = edge
-            eidx = node_to_idx[nb] - 1
-            print(edge, trans_sum[eidx], dwell_sum[eidx], scaling_guesses[eidx])
-        print()
+        if not (em_iteration_index+1) % 100:
+            print(em_iteration_index+1)
+            for edge in T.edges():
+                na, nb = edge
+                eidx = node_to_idx[nb] - 1
+                print(edge, scaling_guesses[eidx])
+            print()
 
 
 def do_em(T, root, edge_to_rate, edge_to_Q, root_distn1d,
@@ -265,7 +267,7 @@ def do_em(T, root, edge_to_rate, edge_to_Q, root_distn1d,
 
 
 def main():
-    np.random.seed(1234)
+    np.random.seed(12346)
 
     # Define the size of the state space
     # which will be constant across the whole tree.
