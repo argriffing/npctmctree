@@ -539,7 +539,7 @@ def do_em(T, root, edge_to_rate, edge_to_Q, root_distn1d,
 
 
 def main():
-    np.random.seed(12351)
+    np.random.seed(12353)
 
     # Define the size of the state space
     # which will be constant across the whole tree.
@@ -610,8 +610,8 @@ def main():
     # starting with an initial guess that is wrong.
     guess_edge_to_rate = {}
     for edge in T.edges():
-        #guess_edge_to_rate[edge] = 0.2
-        guess_edge_to_rate[edge] = edge_to_rate[edge] + 0.05
+        guess_edge_to_rate[edge] = 0.2
+        #guess_edge_to_rate[edge] = edge_to_rate[edge] + 0.05
 
     #f = do_em
     #f = do_cythonized_em

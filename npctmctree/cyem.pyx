@@ -289,9 +289,9 @@ def expectation_step(
     return 0
 
 
-#@cython.boundscheck(False)
-#@cython.wraparound(False)
-#@cython.cdivision(True)
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.cdivision(True)
 def iid_likelihoods(
         idx_t[:] csr_indices, # (nnodes-1,)
         idx_t[:] csr_indptr, # (nnodes+1,)
