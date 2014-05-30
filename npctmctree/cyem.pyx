@@ -188,8 +188,8 @@ def expectation_step(
     cdef double multiplicative_prob, additive_prob
     cdef double accum, joint, coeff
 
-    #with nogil:
-    for foo in range(1):
+    #for foo in range(1):
+    with nogil:
 
         # Clear the expectation accumulators.
         for c in range(nsites):
@@ -249,12 +249,17 @@ def expectation_step(
             # and compute the posterior distribution over states
             # at the tail node.
             for na in range(nnodes):
-                print(np.sum(post[na]))
                 indstart = csr_indptr[na]
                 indstop = csr_indptr[na+1]
                 for j in range(indstart, indstop):
                     nb = csr_indices[j]
                     eidx = nb - 1
+
+                    #print('P:')
+                    #for sa in range(nstates):
+                        #for sb in range(nstates):
+                            #print(sa, sb, transp[eidx, sa, sb])
+                    #print
 
                     # Iterate over head node states.
                     for sa in range(nstates):
@@ -273,6 +278,7 @@ def expectation_step(
 
                             # Compute the posterior joint probability.
                             joint = post[na, sa] * cond[sb]
+                            #print(sa, sb, joint)
                             if not joint:
                                 continue
 

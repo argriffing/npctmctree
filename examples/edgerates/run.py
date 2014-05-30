@@ -29,17 +29,20 @@ def get_tree_info():
     T = nx.DiGraph()
     edge_to_rate = {}
     root = 'N1'
+    leaves = ('N0', 'N5', 'N3', 'N4')
+    internal_nodes = ('N1', 'N2')
     triples = (
             ('N1', 'N0', 0.1),
             ('N1', 'N2', 0.2),
             ('N1', 'N5', 0.3),
             ('N2', 'N3', 0.4),
-            ('N2', 'N4', 0.5))
+            ('N2', 'N4', 0.5),
+            )
     for va, vb, rate in triples:
         edge = (va, vb)
         T.add_edge(*edge)
         edge_to_rate[edge] = rate
-    return T, root, edge_to_rate
+    return T, root, edge_to_rate, leaves, internal_nodes
 
 
 def do_cythonized_em(T, root,
@@ -103,8 +106,11 @@ def do_cythonized_em(T, root,
         eidx = node_to_idx[nb] - 1
         scaling_guesses[eidx] = rate
 
+    # Pre-scale the rate matrix.
+    transq *= scaling_guesses[:, None, None]
+
     # Do the EM iterations.
-    nsteps = 3
+    nsteps = 1000
     for em_iteration_index in range(nsteps):
 
         # Scale the rate matrices according to the edge ratios.
@@ -114,9 +120,12 @@ def do_cythonized_em(T, root,
         # and the interaction matrix arrays.
         trans_indicator = np.ones((n, n)) - np.identity(n)
         dwell_indicator = np.identity(n)
-        for na, nb in T.edges():
+        for edge in T.edges():
+            na, nb = edge
             eidx = node_to_idx[nb] - 1
             Q = transq[eidx]
+            #print(edge, 'Q:')
+            #print(Q)
             transp[eidx] = expm(Q)
             interact_trans[eidx] = expm_frechet(
                     Q, Q * trans_indicator, compute_expm=False)
@@ -169,6 +178,8 @@ def do_em(T, root, edge_to_rate, edge_to_Q, root_distn1d,
         edge_to_P = {}
         for edge in T.edges():
             scaled_Q = edge_to_scaled_Q[edge]
+            #print(edge, 'Q:')
+            #print(scaled_Q)
             P = expm(scaled_Q)
             edge_to_P[edge] = P
 
@@ -214,6 +225,10 @@ def do_em(T, root, edge_to_rate, edge_to_Q, root_distn1d,
                 # extract some edge-specific matrices
                 P = edge_to_P[edge]
                 J = edge_to_J[edge]
+                #print(edge)
+                #print(P)
+                #print(J)
+                #print()
 
                 # transition contribution
                 interact = edge_to_interact_trans[edge]
@@ -221,7 +236,8 @@ def do_em(T, root, edge_to_rate, edge_to_Q, root_distn1d,
                 for i in range(n):
                     for j in range(n):
                         if J[i, j]:
-                            total += J[i, j] * interact[i, j] / P[i, j]
+                            coeff = J[i, j] / P[i, j]
+                            total += coeff * interact[i, j]
                 edge_to_trans_expectation[edge] += lhood * total
 
                 # dwell contribution
@@ -230,7 +246,8 @@ def do_em(T, root, edge_to_rate, edge_to_Q, root_distn1d,
                 for i in range(n):
                     for j in range(n):
                         if J[i, j]:
-                            total += J[i, j] * interact[i, j] / P[i, j]
+                            coeff = J[i, j] / P[i, j]
+                            total += coeff * interact[i, j]
                 edge_to_dwell_expectation[edge] += lhood * total
 
         # According to EM, update each edge-specific rate guess
@@ -248,11 +265,11 @@ def do_em(T, root, edge_to_rate, edge_to_Q, root_distn1d,
 
 
 def main():
-    np.random.seed(12345)
+    np.random.seed(1234)
 
     # Define the size of the state space
     # which will be constant across the whole tree.
-    n = 2
+    n = 4
 
     # Sample a random root distribution as a 1d numpy array.
     pzero = 0
@@ -260,7 +277,7 @@ def main():
 
     # Hardcode a tree with four leaves
     # and some arbitrary hardcoded rate scaling factors per edge.
-    T, root, edge_to_rate = get_tree_info()
+    T, root, edge_to_rate, leaves, internal_nodes = get_tree_info()
 
     # Sample a random rate matrix for each edge.
     # These rate matrices have no redeeming qualities --
@@ -285,8 +302,6 @@ def main():
 
     # Instead of sampling states at the leaves,
     # find the exact joint distribution of leaf states.
-    leaves = ('N0', 'N5', 'N3', 'N4')
-    internal_nodes = ('N1', 'N2')
     states = range(n)
     # Initialize the distribution over leaf data (yes this is confusing).
     data_prob_pairs = []
