@@ -18,7 +18,7 @@ from npmctree.dynamic_fset_lhood import get_lhood, get_edge_to_distn2d
 #from npmctree.cy_dynamic_lmap_lhood import get_lhood, get_edge_to_distn2d
 
 import npctmctree
-from npctmctree.cyem import expectation_step
+from npctmctree.cyem import expectation_step, iid_likelihoods
 
 
 def get_tree_info():
@@ -45,6 +45,123 @@ def get_tree_info():
         T.add_edge(*edge)
         edge_to_rate[edge] = rate
     return T, root, edge_to_rate, leaves, internal_nodes
+
+
+def objective_and_gradient_for_search(
+        T, node_to_idx, site_weights, m,
+        transq_unscaled, transp, transp_grad,
+        data,
+        root_distn1d,
+        scale,
+        ):
+    """
+
+    """
+    # Unpack some stuff.
+    nsites, nnodes, nstates = data.shape
+    n = nstates
+
+    # Scale the rate matrices according to the edge ratios.
+    transq = transq_unscaled * scale[:, None, None]
+
+    # Compute the probability transition matrix arrays.
+    for edge in T.edges():
+        na, nb = edge
+        eidx = node_to_idx[nb] - 1
+        Q = transq[eidx]
+        transp[eidx] = expm(Q)
+
+    # Compute the site likelihoods.
+    validation = 1
+    likelihoods = np.empty(nsites, dtype=float)
+    iid_likelihoods(
+            m.indices, m.indptr,
+            transp,
+            data,
+            root_distn1d,
+            likelihoods,
+            validation,
+            )
+
+    # Compute the sum of log likelihoods.
+    # This is the negative of the objective function.
+    ll_total = np.log(likelihoods).dot(site_weights)
+
+    # For each edge,
+    # Adjust the transition probability matrix to compute the gradient.
+    lhood_gradients = np.empty((nnodes-1, nsites), dtype=float)
+    for edge in T.edges():
+        na, nb = edge
+        eidx = node_to_idx[nb] - 1
+        transp_grad[...] = transp
+        transp_grad[eidx] = np.dot(transq_unscaled[eidx], transp[eidx])
+        iid_likelihoods(
+                m.indices, m.indptr,
+                transp_grad,
+                data,
+                root_distn1d,
+                lhood_gradients[eidx],
+                validation,
+                )
+
+    # Compute the log likelihood gradient.
+    ll_gradient = np.dot(lhood_gradients / likelihoods[None, :], site_weights)
+
+    # Return the objective function and its gradient.
+    return -ll_total, -ll_gradient
+
+
+def do_gradient_search(T, root,
+        edge_to_rate, edge_to_Q, root_distn1d,
+        data_prob_pairs, guess_edge_to_rate):
+    """
+
+    """
+    # Define a toposort node ordering and a corresponding csr matrix.
+    nodes = nx.topological_sort(T, [root])
+    node_to_idx = dict((na, i) for i, na in enumerate(nodes))
+    m = nx.to_scipy_sparse_matrix(T, nodes)
+
+    # Stack the transition rate matrices into a single array.
+    nnodes = len(nodes)
+    nstates = root_distn1d.shape[0]
+    n = nstates
+    transq = np.empty((nnodes-1, nstates, nstates), dtype=float)
+    for (na, nb), Q in edge_to_Q.items():
+        edge_idx = node_to_idx[nb] - 1
+        transq[edge_idx] = Q
+
+    # Allocate a transition probability matrix array.
+    transp = np.empty_like(transq)
+    transp_grad = np.empty_like(transp)
+
+    # Stack the data into a single array,
+    # and construct an array of site weights.
+    nsites = len(data_prob_pairs)
+    datas, probs = zip(*data_prob_pairs)
+    site_weights = np.array(probs, dtype=float)
+    data = np.empty((nsites, nnodes, nstates), dtype=float)
+    for site_index, site_data in enumerate(datas):
+        for i, na in enumerate(nodes):
+            data[site_index, i] = site_data[na]
+
+    # Initialize the per-edge rate matrix scaling factor guesses.
+    scaling_guesses = np.empty(nnodes-1, dtype=float)
+    for (na, nb), rate in guess_edge_to_rate.items():
+        eidx = node_to_idx[nb] - 1
+        scaling_guesses[eidx] = rate
+
+    f = partial(objective_and_gradient_for_search,
+            T, node_to_idx, site_weights, m,
+            transq, transp, transp_grad,
+            data,
+            root_distn1d,
+            )
+    x0 = scaling_guesses
+    bounds = [(0, None)]*(nnodes-1)
+    result = scipy.optimize.minimize(f, x0,
+            method='L-BFGS-B', jac=True, bounds=bounds)
+    print(result)
 
 
 def em_objective_for_broyden(*args):
@@ -493,11 +610,13 @@ def main():
     # starting with an initial guess that is wrong.
     guess_edge_to_rate = {}
     for edge in T.edges():
-        guess_edge_to_rate[edge] = 0.2
+        #guess_edge_to_rate[edge] = 0.2
+        guess_edge_to_rate[edge] = edge_to_rate[edge] + 0.05
 
     #f = do_em
     #f = do_cythonized_em
-    f = do_cythonized_accelerated_em
+    #f = do_cythonized_accelerated_em
+    f = do_gradient_search
     f(T, root, edge_to_rate, edge_to_Q, root_distn1d,
             data_prob_pairs, guess_edge_to_rate)
 

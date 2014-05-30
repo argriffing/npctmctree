@@ -289,9 +289,9 @@ def expectation_step(
     return 0
 
 
-@cython.boundscheck(False)
-@cython.wraparound(False)
-@cython.cdivision(True)
+#@cython.boundscheck(False)
+#@cython.wraparound(False)
+#@cython.cdivision(True)
 def iid_likelihoods(
         idx_t[:] csr_indices, # (nnodes-1,)
         idx_t[:] csr_indptr, # (nnodes+1,)
@@ -347,8 +347,10 @@ def iid_likelihoods(
     # Note that the global interpreter lock (gil) should be in effect
     # for this section.
     if validation:
-        assert_shape_equal(transp, (nnodes-1, nstates, nstates))
         assert_csr_tree(csr_indices, csr_indptr, nnodes)
+        assert_shape_equal(transp, (nnodes-1, nstates, nstates))
+        assert_shape_equal(root_distn, (nstates,))
+        assert_shape_equal(lhood_out, (nsites,))
 
     # Declare some variables for iterating over edges.
     cdef int i, j
