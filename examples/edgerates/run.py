@@ -2,6 +2,7 @@
 """
 from __future__ import division, print_function, absolute_import
 
+from functools import partial
 from itertools import product
 from collections import defaultdict
 
@@ -9,6 +10,7 @@ import networkx as nx
 import numpy as np
 from numpy.testing import assert_allclose, assert_
 from scipy.linalg import expm, expm_frechet
+import scipy.optimize
 
 import npmctree
 from npmctree.puzzles import sample_distn1d
@@ -43,6 +45,133 @@ def get_tree_info():
         T.add_edge(*edge)
         edge_to_rate[edge] = rate
     return T, root, edge_to_rate, leaves, internal_nodes
+
+
+def em_objective_for_aitken(
+        T, node_to_idx, site_weights,
+        m,
+        transq_unscaled, transp,
+        interact_trans, interact_dwell,
+        data,
+        root_distn1d,
+        trans_out, dwell_out,
+        scale,
+        ):
+    """
+    Recast EM as a fixed-point problem.
+    
+    This approach is inspired by the introduction of the following paper.
+    A QUASI-NEWTON ACCELERATION OF THE EM ALGORITHM
+    Kenneth Lange
+
+    """
+    # Unpack some stuff.
+    nsites, nnodes, nstates = data.shape
+    n = nstates
+
+    # Scale the rate matrices according to the edge ratios.
+    transq = transq_unscaled * scale[:, None, None]
+
+    # Compute the probability transition matrix arrays
+    # and the interaction matrix arrays.
+    trans_indicator = np.ones((n, n)) - np.identity(n)
+    dwell_indicator = np.identity(n)
+    for edge in T.edges():
+        na, nb = edge
+        eidx = node_to_idx[nb] - 1
+        Q = transq[eidx]
+        transp[eidx] = expm(Q)
+        interact_trans[eidx] = expm_frechet(
+                Q, Q * trans_indicator, compute_expm=False)
+        interact_dwell[eidx] = expm_frechet(
+                Q, Q * dwell_indicator, compute_expm=False)
+
+    # Compute the expectations.
+    validation = 0
+    expectation_step(
+            m.indices, m.indptr,
+            transp, transq,
+            interact_trans, interact_dwell,
+            data,
+            root_distn1d,
+            trans_out, dwell_out,
+            validation,
+            )
+
+    # Compute the per-edge ratios.
+    trans_sum = (trans_out * site_weights[:, None]).sum(axis=0)
+    dwell_sum = (dwell_out * site_weights[:, None]).sum(axis=0)
+    scaling_ratios = trans_sum / -dwell_sum
+
+    # Return the new scaling factors.
+    return scale * scaling_ratios
+
+
+def do_cythonized_accelerated_em(T, root,
+        edge_to_rate, edge_to_Q, root_distn1d,
+        data_prob_pairs, guess_edge_to_rate):
+    """
+    """
+    # Define a toposort node ordering and a corresponding csr matrix.
+    nodes = nx.topological_sort(T, [root])
+    node_to_idx = dict((na, i) for i, na in enumerate(nodes))
+    m = nx.to_scipy_sparse_matrix(T, nodes)
+
+    # Stack the transition rate matrices into a single array.
+    nnodes = len(nodes)
+    nstates = root_distn1d.shape[0]
+    n = nstates
+    transq = np.empty((nnodes-1, nstates, nstates), dtype=float)
+    for (na, nb), Q in edge_to_Q.items():
+        edge_idx = node_to_idx[nb] - 1
+        transq[edge_idx] = Q
+
+    # Allocate a transition probability matrix array
+    # and some interaction matrix arrays.
+    transp = np.empty_like(transq)
+    interact_trans = np.empty_like(transq)
+    interact_dwell = np.empty_like(transq)
+
+    # Stack the data into a single array,
+    # and construct an array of site weights.
+    nsites = len(data_prob_pairs)
+    datas, probs = zip(*data_prob_pairs)
+    site_weights = np.array(probs, dtype=float)
+    data = np.empty((nsites, nnodes, nstates), dtype=float)
+    for site_index, site_data in enumerate(datas):
+        for i, na in enumerate(nodes):
+            data[site_index, i] = site_data[na]
+
+    # Initialize expectation arrays.
+    trans_out = np.empty((nsites, nnodes-1), dtype=float)
+    dwell_out = np.empty((nsites, nnodes-1), dtype=float)
+
+    # Initialize the per-edge rate matrix scaling factor guesses.
+    scaling_guesses = np.empty(nnodes-1, dtype=float)
+    for (na, nb), rate in guess_edge_to_rate.items():
+        eidx = node_to_idx[nb] - 1
+        scaling_guesses[eidx] = rate
+
+    # Define the fixed-point function and the initial guess.
+    f = partial(em_objective_for_aitken,
+            T, node_to_idx, site_weights,
+            m,
+            transq, transp,
+            interact_trans, interact_dwell,
+            data,
+            root_distn1d,
+            trans_out, dwell_out)
+    x0 = scaling_guesses
+    
+    # Do a few unaccelerated EM iterations.
+    for i in range(20):
+        x0 = f(x0)
+
+    # Use the fixed point optimization to accelerate the EM.
+    result = scipy.optimize.fixed_point(f, x0)
+
+    # Look at the results of the accelerated EM search.
+    print(result)
 
 
 def do_cythonized_em(T, root,
@@ -271,7 +400,7 @@ def main():
 
     # Define the size of the state space
     # which will be constant across the whole tree.
-    n = 4
+    n = 3
 
     # Sample a random root distribution as a 1d numpy array.
     pzero = 0
@@ -341,10 +470,10 @@ def main():
         guess_edge_to_rate[edge] = 0.2
 
     #f = do_em
-    f = do_cythonized_em
+    #f = do_cythonized_em
+    f = do_cythonized_accelerated_em
     f(T, root, edge_to_rate, edge_to_Q, root_distn1d,
             data_prob_pairs, guess_edge_to_rate)
-
 
 
 if __name__ == '__main__':
