@@ -47,6 +47,20 @@ def get_tree_info():
     return T, root, edge_to_rate, leaves, internal_nodes
 
 
+def em_objective_for_broyden(*args):
+    """
+    Recast EM as a root finding problem.
+    
+    This approach is inspired by method Q1 of the following paper.
+    Acceleration of the EM Algorithm by Using Quasi-Newton Methods
+    Mortaza Jamshidian and Robert I. Jennrich
+    1997
+
+    """
+    scale = args[-1]
+    return em_objective_for_aitken(*args) - scale
+
+
 def em_objective_for_aitken(
         T, node_to_idx, site_weights,
         m,
@@ -63,6 +77,7 @@ def em_objective_for_aitken(
     This approach is inspired by the introduction of the following paper.
     A QUASI-NEWTON ACCELERATION OF THE EM ALGORITHM
     Kenneth Lange
+    1995
 
     """
     # Unpack some stuff.
@@ -153,7 +168,15 @@ def do_cythonized_accelerated_em(T, root,
         scaling_guesses[eidx] = rate
 
     # Define the fixed-point function and the initial guess.
-    f = partial(em_objective_for_aitken,
+    f_aitken = partial(em_objective_for_aitken,
+            T, node_to_idx, site_weights,
+            m,
+            transq, transp,
+            interact_trans, interact_dwell,
+            data,
+            root_distn1d,
+            trans_out, dwell_out)
+    f_broyden = partial(em_objective_for_broyden,
             T, node_to_idx, site_weights,
             m,
             transq, transp,
@@ -164,11 +187,14 @@ def do_cythonized_accelerated_em(T, root,
     x0 = scaling_guesses
     
     # Do a few unaccelerated EM iterations.
-    for i in range(20):
-        x0 = f(x0)
+    for i in range(5):
+        x0 = f_aitken(x0)
 
     # Use the fixed point optimization to accelerate the EM.
-    result = scipy.optimize.fixed_point(f, x0)
+    #result = scipy.optimize.fixed_point(f_aitken, x0, maxiter=10000)
+
+    # Use a root search to accelerate the EM.
+    result = scipy.optimize.root(f_broyden, x0)
 
     # Look at the results of the accelerated EM search.
     print(result)
@@ -396,11 +422,11 @@ def do_em(T, root, edge_to_rate, edge_to_Q, root_distn1d,
 
 
 def main():
-    np.random.seed(12346)
+    np.random.seed(12351)
 
     # Define the size of the state space
     # which will be constant across the whole tree.
-    n = 3
+    n = 6
 
     # Sample a random root distribution as a 1d numpy array.
     pzero = 0
