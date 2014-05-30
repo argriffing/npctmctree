@@ -370,7 +370,7 @@ def iid_likelihoods(
 
         # Clear the per-site likelihoods.
         for c in range(nsites):
-            likelihoods_out[c] = 0
+            lhood_out[c] = 0
 
         # Iterate over sites.
         for c in range(nsites):
