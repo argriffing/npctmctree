@@ -1,15 +1,70 @@
 """
-Attempt to implement a specialized line search algorithm.
+Attempt to implement an EM acceleration.
 
+The main Quasi-Newton algorithm is from the following source:
+Acceleration of the EM algorithm by using quasi-Newton methods.
+Jamshidian and Jennrich, 1997
+
+The line search is from the following source:
 Conjugate gradient acceleration of the EM algorithm.
 Jamshidian and Jennrich, 1993
 Appendix A.5.
 
 """
+from __future__ import division, print_function, absolute_import
+
+import numpy as np
 
 
 class LineSearchError(Exception):
     pass
+
+
+def get_dS(dg, dt, dtp):
+    """
+    helper function for jj97 qn2.
+    Equation 4.1.
+    """
+    d = np.dot(gt, dt)
+    a = (1 + np.dot(dg, dtp) / d)
+    b = np.outer(dt, dt)
+    c = np.outer(dtp, dt) + np.outer(dt, dtp)
+    return (a*b - c) / d
+
+
+def jj97_qn2(t0, grad, em, bounds=None):
+    """
+
+    Parameters
+    ----------
+    t0 : ndarray
+        initial guess
+    grad : function
+        gradient of log likelihood
+    em : function
+        em displacement function
+    bounds : sequence, optional
+        inclusive box constraints on the search
+
+    """
+    n = len(t0)
+    t = t0
+    g = grad(t0)
+    h = em(t0)
+    S = np.zeros((n, n), dtype=float)
+    for i in range(100):
+        d = -h + S.dot(g)
+        a1, t1, g1 = jj93_linesearch(grad, t, g, d, 1.0, bounds)
+        h1 = em(t1)
+        dt = t1 - t
+        dg = g1 - g
+        dh = h1 - h
+        dtp = -dh + S.dot(dg)
+        dS = get_dS(dg, dt, dtp)
+        S1 = S + dS
+        t = t + dt
+        t, g, h, S = x1, g1, h1, S1
+        print(t)
 
 
 def box_ok(bounds, x):
@@ -18,14 +73,18 @@ def box_ok(bounds, x):
     if len(bounds) != len(x):
         raise ValueError
     for x, (low, high) in zip(bounds, x):
-        if not (low <= x <= high):
+        if low is not None and low > x:
+            return False
+        if high is not None and x < high:
             return False
     return True
 
 
-def jj93_linesearch(g, theta, d, a1, bounds=None):
+def jj93_linesearch(g, theta, d, a1, g0=None, bounds=None):
     """
     Find the maximum of F(a) = f(theta + a1*d).
+
+    helper function for jj97 qn2.
 
     Assumptions are as follows.
     alpha >= 0.
@@ -42,6 +101,8 @@ def jj93_linesearch(g, theta, d, a1, bounds=None):
         direction of the search
     a1 : float
         initial distance in the direction of the search
+    g0 : vector, optional
+        gradient at the initial point
     bounds : sequence, optional
         inclusive box constraints on the search
 
@@ -59,7 +120,9 @@ def jj93_linesearch(g, theta, d, a1, bounds=None):
     n = 0
     a0 = 0
     x0 = theta + a0*d
-    G0 = np.dot(d, g(x0))
+    if g0 is None:
+        g0 = g(x0)
+    G0 = np.dot(d, g0)
     Ga0 = G0
     while True:
         # Step 1
