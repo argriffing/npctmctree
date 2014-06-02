@@ -56,12 +56,14 @@ def get_ll_gradient(*args):
     # this can be used for grad in jj97 search
     neg_ll_f, neg_ll_g = objective_and_gradient_for_search(*args)
     return -neg_ll_g
+    #return neg_ll_g
 
 
 def get_em_displacement(*args):
     # this can be used for em in jj97 search
     displacement = em_objective_for_broyden(*args)
-    return displacement
+    #return displacement
+    return -displacement
 
 
 

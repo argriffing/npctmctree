@@ -13,6 +13,8 @@ Appendix A.5.
 """
 from __future__ import division, print_function, absolute_import
 
+import itertools
+
 import numpy as np
 
 
@@ -49,24 +51,28 @@ def jj97_qn2(t0, grad, em, bounds=None):
     """
     n = len(t0)
     t = t0
-    g = grad(t0)
-    h = em(t0)
-    S = np.zeros((n, n), dtype=float)
-    for i in range(100):
-        #d = -h + S.dot(g) # not sure why the -1 coefficient on h...
-        d = h + S.dot(g)
-        a1, t1, g1 = jj93_linesearch(grad, t, d, 1.0, g, bounds)
-        h1 = em(t1)
-        dt = t1 - t
-        dg = g1 - g
-        dh = h1 - h
-        #dtp = -dh + S.dot(dg)
-        dtp = dh + S.dot(dg)
-        dS = get_dS(dg, dt, dtp)
-        S1 = S + dS
-        t = t + dt
-        t, g, h, S = t1, g1, h1, S1
-        print(t)
+    for jj97_start_count in itertools.count(1):
+        print('jj97 start:', jj97_start_count)
+        S = np.zeros((n, n), dtype=float)
+        g = grad(t)
+        h = em(t)
+        for jj97_iteration in itertools.count(1):
+            print('jj97 iteration:', jj97_iteration)
+            d = -h + S.dot(g) # not sure why the -1 coefficient on h...
+            try:
+                a1, t1, g1 = jj93_linesearch(grad, t, d, 1.0, g, bounds)
+            except LineSearchError as e:
+                break
+            h1 = em(t1)
+            dt = t1 - t
+            dg = g1 - g
+            dh = h1 - h
+            dtp = -dh + S.dot(dg) # not sure why the -1 coefficient on dh...
+            dS = get_dS(dg, dt, dtp)
+            S1 = S + dS
+            t = t + dt
+            t, g, h, S = t1, g1, h1, S1
+            print(t)
 
 
 def box_ok(bounds, x):
@@ -118,6 +124,7 @@ def jj93_linesearch(g, theta, d, a1, g0=None, bounds=None):
         gradient at x1
 
     """
+    split_limit = 10
     # Step 0
     n = 0
     a0 = 0
@@ -128,7 +135,8 @@ def jj93_linesearch(g, theta, d, a1, g0=None, bounds=None):
     Ga0 = G0
     while True:
         # Step 1
-        while n < 10:
+        while n < split_limit:
+            print('n =', n)
             x1 = theta + a1*d
             if box_ok(bounds, x1):
                 ga1 = g(x1)
@@ -139,7 +147,7 @@ def jj93_linesearch(g, theta, d, a1, g0=None, bounds=None):
                 a1 /= 2
                 n += 1
         # Step 2
-        if n == 10:
+        if n == split_limit:
             raise LineSearchError('please restart search')
         Ga0m = np.abs(Ga0)
         Ga1m = np.abs(Ga1)
