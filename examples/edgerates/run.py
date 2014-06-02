@@ -22,6 +22,9 @@ from npmctree.cyfels import iid_likelihoods
 import npctmctree
 from npctmctree.cyem import expectation_step
 
+import npctmctree
+from npctmctree.linesearch import jj97_qn2
+
 
 def get_tree_info():
     """
@@ -47,6 +50,19 @@ def get_tree_info():
         T.add_edge(*edge)
         edge_to_rate[edge] = rate
     return T, root, edge_to_rate, leaves, internal_nodes
+
+
+def get_ll_gradient(*args):
+    # this can be used for grad in jj97 search
+    neg_ll_f, neg_ll_g = objective_and_gradient_for_search(*args)
+    return -neg_ll_g
+
+
+def get_em_displacement(*args):
+    # this can be used for em in jj97 search
+    dispacement = em_objective_for_broyden(*args)
+    return displacement
+
 
 
 def objective_and_gradient_for_search(
@@ -111,6 +127,79 @@ def objective_and_gradient_for_search(
 
     # Return the objective function and its gradient.
     return -ll_total, -ll_gradient
+
+
+def do_jj97_qn2_search(T, root,
+        edge_to_rate, edge_to_Q, root_distn1d,
+        data_prob_pairs, guess_edge_to_rate):
+    """
+
+    """
+    # Define a toposort node ordering and a corresponding csr matrix.
+    nodes = nx.topological_sort(T, [root])
+    node_to_idx = dict((na, i) for i, na in enumerate(nodes))
+    m = nx.to_scipy_sparse_matrix(T, nodes)
+
+    # Stack the transition rate matrices into a single array.
+    nnodes = len(nodes)
+    nstates = root_distn1d.shape[0]
+    n = nstates
+    transq = np.empty((nnodes-1, nstates, nstates), dtype=float)
+    for (na, nb), Q in edge_to_Q.items():
+        edge_idx = node_to_idx[nb] - 1
+        transq[edge_idx] = Q
+
+    # Allocate a transition probability matrix array.
+    transp = np.empty_like(transq)
+    transp_grad = np.empty_like(transp)
+
+    # Stack the data into a single array,
+    # and construct an array of site weights.
+    nsites = len(data_prob_pairs)
+    datas, probs = zip(*data_prob_pairs)
+    site_weights = np.array(probs, dtype=float)
+    data = np.empty((nsites, nnodes, nstates), dtype=float)
+    for site_index, site_data in enumerate(datas):
+        for i, na in enumerate(nodes):
+            data[site_index, i] = site_data[na]
+
+    # Initialize the per-edge rate matrix scaling factor guesses.
+    scaling_guesses = np.empty(nnodes-1, dtype=float)
+    for (na, nb), rate in guess_edge_to_rate.items():
+        eidx = node_to_idx[nb] - 1
+        scaling_guesses[eidx] = rate
+
+    # Initialize guesses and bounds.
+    x0 = scaling_guesses
+    bounds = [(0, None)]*(nnodes-1)
+
+    # Initialize gradient function.
+    grad = partial(get_ll_gradient,
+            T, node_to_idx, site_weights, m,
+            transq, transp, transp_grad,
+            data,
+            root_distn1d,
+            )
+
+    # Initialize temporary arrays for EM.
+    interact_trans = np.empty_like(transq)
+    interact_dwell = np.empty_like(transq)
+    trans_out = np.empty((nsites, nnodes-1), dtype=float)
+    dwell_out = np.empty((nsites, nnodes-1), dtype=float)
+
+    # Initialize EM function.
+    em = partial(get_em_displacement,
+            T, node_to_idx, site_weights,
+            m,
+            transq, transp,
+            interact_trans, interact_dwell,
+            data,
+            root_distn1d,
+            trans_out, dwell_out)
+
+    out = jj97_qn2(x0, grad, em, bounds)
+    print(out)
+
 
 
 def do_gradient_search(T, root,
@@ -618,9 +707,14 @@ def main():
     #f = do_em
     #f = do_cythonized_em
     #f = do_cythonized_accelerated_em
-    f = do_gradient_search
+    #f = do_gradient_search
+    f = do_jj97_qn2_search
     f(T, root, edge_to_rate, edge_to_Q, root_distn1d,
             data_prob_pairs, guess_edge_to_rate)
+
+    #def get_ll_gradient(*args):
+    #def get_em_displacement(*args):
+    #def jj97_qn2(t0, grad, em, bounds=None):
 
 
 if __name__ == '__main__':
