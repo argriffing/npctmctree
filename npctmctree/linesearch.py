@@ -25,7 +25,7 @@ def get_dS(dg, dt, dtp):
     helper function for jj97 qn2.
     Equation 4.1.
     """
-    d = np.dot(gt, dt)
+    d = np.dot(dg, dt)
     a = (1 + np.dot(dg, dtp) / d)
     b = np.outer(dt, dt)
     c = np.outer(dtp, dt) + np.outer(dt, dtp)
@@ -53,17 +53,19 @@ def jj97_qn2(t0, grad, em, bounds=None):
     h = em(t0)
     S = np.zeros((n, n), dtype=float)
     for i in range(100):
-        d = -h + S.dot(g)
-        a1, t1, g1 = jj93_linesearch(grad, t, g, d, 1.0, bounds)
+        #d = -h + S.dot(g) # not sure why the -1 coefficient on h...
+        d = h + S.dot(g)
+        a1, t1, g1 = jj93_linesearch(grad, t, d, 1.0, g, bounds)
         h1 = em(t1)
         dt = t1 - t
         dg = g1 - g
         dh = h1 - h
-        dtp = -dh + S.dot(dg)
+        #dtp = -dh + S.dot(dg)
+        dtp = dh + S.dot(dg)
         dS = get_dS(dg, dt, dtp)
         S1 = S + dS
         t = t + dt
-        t, g, h, S = x1, g1, h1, S1
+        t, g, h, S = t1, g1, h1, S1
         print(t)
 
 
@@ -72,7 +74,7 @@ def box_ok(bounds, x):
         return True
     if len(bounds) != len(x):
         raise ValueError
-    for x, (low, high) in zip(bounds, x):
+    for x, (low, high) in zip(x, bounds):
         if low is not None and low > x:
             return False
         if high is not None and x < high:
@@ -130,7 +132,7 @@ def jj93_linesearch(g, theta, d, a1, g0=None, bounds=None):
             x1 = theta + a1*d
             if box_ok(bounds, x1):
                 ga1 = g(x1)
-                Ga1 = np.dot(d, g1)
+                Ga1 = np.dot(d, ga1)
                 n += 1
                 break
             else:
@@ -143,7 +145,16 @@ def jj93_linesearch(g, theta, d, a1, g0=None, bounds=None):
         Ga1m = np.abs(Ga1)
         if n != 1 and Ga1m < 0.1 * G0:
             return a1, x1, ga1
-        elif np.sign(a1 - a0) * (Ga0 - Ga1) / (Ga0m + Ga1m) < 1e-5:
+        criterion = np.sign(a1 - a0) * (Ga0 - Ga1) / (Ga0m + Ga1m)
+        #print('criterion calculation...')
+        #print(a1)
+        #print(a0)
+        #print(Ga0)
+        #print(Ga1)
+        #print(Ga0m)
+        #print(Ga1m)
+        #print(criterion)
+        if criterion < 1e-5:
             raise LineSearchError('please restart search')
         else:
             a0, Ga0, a1 = a1, Ga1, (a1*Ga0 - a0*Ga1) / (Ga0 - Ga1)

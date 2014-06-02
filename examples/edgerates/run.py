@@ -60,7 +60,7 @@ def get_ll_gradient(*args):
 
 def get_em_displacement(*args):
     # this can be used for em in jj97 search
-    dispacement = em_objective_for_broyden(*args)
+    displacement = em_objective_for_broyden(*args)
     return displacement
 
 
@@ -196,6 +196,10 @@ def do_jj97_qn2_search(T, root,
             data,
             root_distn1d,
             trans_out, dwell_out)
+
+    # Do a few EM rounds.
+    for i in range(5):
+        x0 += em(x0)
 
     out = jj97_qn2(x0, grad, em, bounds)
     print(out)
