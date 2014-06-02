@@ -18,6 +18,8 @@ from distutils.extension import Extension
 
 from Cython.Distutils import build_ext
 
+import numpy as np
+
 setup(
         name='npctmctree',
         version='0.1',
@@ -29,6 +31,7 @@ setup(
         test_suite='nose.collector',
         package_data={'npctmctree' : ['tests/test_*.py']},
         cmdclass={'build_ext' : build_ext},
-        ext_modules=[Extension('npctmctree.cyem', ['npctmctree/cyem.pyx'])],
+        ext_modules=[Extension('npctmctree.cyem', ['npctmctree/cyem.pyx'],
+            include_dirs=[np.get_include()])],
         )
 

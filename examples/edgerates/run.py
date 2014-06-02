@@ -16,9 +16,11 @@ import npmctree
 from npmctree.puzzles import sample_distn1d
 from npmctree.dynamic_fset_lhood import get_lhood, get_edge_to_distn2d
 #from npmctree.cy_dynamic_lmap_lhood import get_lhood, get_edge_to_distn2d
+from npmctree.dynamic_lmap_lhood import get_iid_lhoods
+from npmctree.cyfels import iid_likelihoods
 
 import npctmctree
-from npctmctree.cyem import expectation_step, iid_likelihoods
+from npctmctree.cyem import expectation_step
 
 
 def get_tree_info():
@@ -539,7 +541,7 @@ def do_em(T, root, edge_to_rate, edge_to_Q, root_distn1d,
 
 
 def main():
-    np.random.seed(12353)
+    np.random.seed(12354)
 
     # Define the size of the state space
     # which will be constant across the whole tree.
