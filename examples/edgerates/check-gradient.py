@@ -47,7 +47,47 @@ def get_tree_info():
     return T, root, edge_to_rate, leaves, internal_nodes
 
 
-def get_ll_diff(T, root, root_distn1d, node_to_data_fvec1d, edge_to_Q,
+def help_get_lhood_diff_xx(T, root,
+        root_distn1d, node_to_data_fvec1d, edge_to_Q,
+        edge_to_rate, special_edge):
+    edge_to_P = {}
+    for edge in T.edges():
+        edge_rate = edge_to_rate[edge]
+        edge_Q = edge_to_Q[edge]
+        Q = edge_rate * edge_Q
+        if edge == special_edge:
+            P = np.dot(np.dot(edge_Q, edge_Q), expm(Q))
+        else:
+            P = expm(Q)
+        edge_to_P[edge] = P
+    lhood = get_lhood(T, edge_to_P, root, root_distn1d,
+            node_to_data_fvec1d)
+    return lhood
+
+
+def help_get_lhood_diff_xy(T, root,
+        root_distn1d, node_to_data_fvec1d, edge_to_Q,
+        edge_to_rate, edge_x, edge_y):
+    if edge_x == edge_y:
+        return help_get_ll_diff_xx(T, root,
+                root_distn1d, node_to_data_fvec1d, edge_to_Q,
+                edge_to_rate, edge_x)
+    edge_to_P = {}
+    for edge in T.edges():
+        edge_rate = edge_to_rate[edge]
+        edge_Q = edge_to_Q[edge]
+        Q = edge_rate * edge_Q
+        if edge in (edge_x, edge_y):
+            P = np.dot(edge_Q, expm(Q))
+        else:
+            P = expm(Q)
+        edge_to_P[edge] = P
+    lhood = get_lhood(T, edge_to_P, root, root_distn1d,
+            node_to_data_fvec1d)
+    return lhood
+
+
+def help_get_lhood_diff(T, root, root_distn1d, node_to_data_fvec1d, edge_to_Q,
         edge_to_rate, special_edge):
     edge_to_P = {}
     for edge in T.edges():
@@ -62,9 +102,9 @@ def get_ll_diff(T, root, root_distn1d, node_to_data_fvec1d, edge_to_Q,
     lhood = get_lhood(T, edge_to_P, root, root_distn1d,
             node_to_data_fvec1d)
     return lhood
-    #return np.log(lhood)
 
-def get_ll(T, root, root_distn1d, node_to_data_fvec1d, edge_to_Q,
+
+def help_get_lhood(T, root, root_distn1d, node_to_data_fvec1d, edge_to_Q,
         edge_to_rate):
     edge_to_P = {}
     for edge in T.edges():
@@ -74,11 +114,18 @@ def get_ll(T, root, root_distn1d, node_to_data_fvec1d, edge_to_Q,
         edge_to_P[edge] = P
     lhood = get_lhood(T, edge_to_P, root, root_distn1d,
             node_to_data_fvec1d)
+    return lhood
+
+
+def help_get_ll(T, root, root_distn1d, node_to_data_fvec1d, edge_to_Q,
+        edge_to_rate):
+    lhood = help_get_lhood(T, root,
+            root_distn1d, node_to_data_fvec1d, edge_to_Q, edge_to_rate)
     return np.log(lhood)
 
 
 def main():
-    np.random.seed(1234)
+    np.random.seed(12345)
 
     # Define the size of the state space
     # which will be constant across the whole tree.
@@ -128,20 +175,96 @@ def main():
         fvec1d = np.ones(n, dtype=bool)
         node_to_data_fvec1d[node] = fvec1d
 
-    eps = 1e-8
+    eps = 1e-5
+    #eps = 1e-8
+    #eps = 1e-10
+
+    print('finite central differences first derivative:')
     d = edge_to_rate.copy()
     d[edge_of_interest] -= eps
-    lla = get_ll(T, root, root_distn1d, node_to_data_fvec1d, edge_to_Q, d)
+    lla = help_get_ll(T, root, root_distn1d, node_to_data_fvec1d, edge_to_Q, d)
     d = edge_to_rate.copy()
     d[edge_of_interest] += eps
-    llb = get_ll(T, root, root_distn1d, node_to_data_fvec1d, edge_to_Q, d)
+    llb = help_get_ll(T, root, root_distn1d, node_to_data_fvec1d, edge_to_Q, d)
     print(lla, llb)
     print((llb - lla) / (2 * eps))
+    print()
 
-    ldiff = get_ll_diff(T, root, root_distn1d, node_to_data_fvec1d, edge_to_Q,
+    print('analytical first derivative:')
+    ldiff = help_get_lhood_diff(T, root,
+            root_distn1d, node_to_data_fvec1d, edge_to_Q,
             edge_to_rate, edge_of_interest)
     print(ldiff)
     print(ldiff / np.exp(lla))
+    print()
+
+    print('finite central differences second derivative single edge:')
+    d = edge_to_rate.copy()
+    llb = help_get_ll(T, root, root_distn1d, node_to_data_fvec1d, edge_to_Q, d)
+    d = edge_to_rate.copy()
+    d[edge_of_interest] -= eps
+    lla = help_get_ll(T, root, root_distn1d, node_to_data_fvec1d, edge_to_Q, d)
+    d = edge_to_rate.copy()
+    d[edge_of_interest] += eps
+    llc = help_get_ll(T, root, root_distn1d, node_to_data_fvec1d, edge_to_Q, d)
+    print(lla, llb, llc)
+    print((llc - 2*llb + lla) / (eps * eps))
+    print()
+
+    print('analytical second derivative single edge:')
+    l = help_get_lhood(T, root, root_distn1d, node_to_data_fvec1d, edge_to_Q,
+            edge_to_rate)
+    l_x = help_get_lhood_diff(T, root,
+            root_distn1d, node_to_data_fvec1d, edge_to_Q,
+            edge_to_rate, edge_of_interest)
+    l_xx = help_get_lhood_diff_xx(T, root,
+            root_distn1d, node_to_data_fvec1d, edge_to_Q,
+            edge_to_rate, edge_of_interest)
+    print(l, l_x, l_xx)
+    print(l_xx / l - (l_x*l_x) / (l*l))
+    print()
+
+    # specify two edges of interest
+    edges = list(T.edges())
+    edge_x = edges[1]
+    edge_y = edges[2]
+
+    print('finite central differences second derivative two edges:')
+    d = edge_to_rate.copy()
+    d[edge_x] -= eps
+    d[edge_y] -= eps
+    ll00 = help_get_ll(T, root, root_distn1d, node_to_data_fvec1d, edge_to_Q, d)
+    d = edge_to_rate.copy()
+    d[edge_x] += eps
+    d[edge_y] -= eps
+    ll10 = help_get_ll(T, root, root_distn1d, node_to_data_fvec1d, edge_to_Q, d)
+    d = edge_to_rate.copy()
+    d[edge_x] -= eps
+    d[edge_y] += eps
+    ll01 = help_get_ll(T, root, root_distn1d, node_to_data_fvec1d, edge_to_Q, d)
+    d = edge_to_rate.copy()
+    d[edge_x] += eps
+    d[edge_y] += eps
+    ll11 = help_get_ll(T, root, root_distn1d, node_to_data_fvec1d, edge_to_Q, d)
+    print(ll00, ll01, ll10, ll11)
+    print((ll11 - ll10 - ll01 + ll00) / (4 * eps * eps))
+    print()
+
+    print('analytical second derivative two edges:')
+    l = help_get_lhood(T, root, root_distn1d, node_to_data_fvec1d, edge_to_Q,
+            edge_to_rate)
+    l_x = help_get_lhood_diff(T, root,
+            root_distn1d, node_to_data_fvec1d, edge_to_Q,
+            edge_to_rate, edge_x)
+    l_y = help_get_lhood_diff(T, root,
+            root_distn1d, node_to_data_fvec1d, edge_to_Q,
+            edge_to_rate, edge_y)
+    l_xy = help_get_lhood_diff_xy(T, root,
+            root_distn1d, node_to_data_fvec1d, edge_to_Q,
+            edge_to_rate, edge_x, edge_y)
+    print(l, l_x, l_y, l_xy)
+    print(l_xy / l - (l_x * l_y) / (l * l))
+    print()
 
 
 if __name__ == '__main__':
