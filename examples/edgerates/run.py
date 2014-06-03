@@ -24,6 +24,7 @@ from npctmctree.cyem import expectation_step
 
 import npctmctree
 from npctmctree.linesearch import jj97_qn2
+from npctmctree.derivatives import get_log_likelihood_info
 
 
 def get_tree_info():
@@ -60,11 +61,25 @@ def get_ll_gradient(*args):
 
 
 def get_em_displacement(*args):
-    # this can be used for em in jj97 search
+    # this can be used for em in jj97 search (???)
     displacement = em_objective_for_broyden(*args)
-    #return displacement
-    return -displacement
+    return displacement
 
+
+def get_logscale_fgh(
+        T, node_to_idx, site_weights, m,
+        transq_unscaled, transp_ws, transp_mod_ws,
+        data,
+        root_distn1d,
+        log_scale,
+        ):
+    # return includes hessian and can deal with log scale rates
+    f, g, h = get_log_likelihood_info(
+            T, node_to_idx, site_weights, m,
+            transq_unscaled, transp_ws, transp_mod_ws,
+            data, root_distn1d, log_scale,
+            degree=2, use_log_scale=True)
+    return f, g, h
 
 
 def objective_and_gradient_for_search(
@@ -205,6 +220,94 @@ def do_jj97_qn2_search(T, root,
 
     out = jj97_qn2(x0, grad, em, bounds)
     print(out)
+
+
+def do_hessian_search(T, root,
+        edge_to_rate, edge_to_Q, root_distn1d,
+        data_prob_pairs, guess_edge_to_rate):
+    """
+
+    """
+    # Define a toposort node ordering and a corresponding csr matrix.
+    nodes = nx.topological_sort(T, [root])
+    node_to_idx = dict((na, i) for i, na in enumerate(nodes))
+    m = nx.to_scipy_sparse_matrix(T, nodes)
+
+    # Stack the transition rate matrices into a single array.
+    nnodes = len(nodes)
+    nstates = root_distn1d.shape[0]
+    n = nstates
+    transq = np.empty((nnodes-1, nstates, nstates), dtype=float)
+    for (na, nb), Q in edge_to_Q.items():
+        edge_idx = node_to_idx[nb] - 1
+        transq[edge_idx] = Q
+
+    # Allocate a transition probability matrix array.
+    transp = np.empty_like(transq)
+    transp_grad = np.empty_like(transp)
+
+    # Stack the data into a single array,
+    # and construct an array of site weights.
+    nsites = len(data_prob_pairs)
+    datas, probs = zip(*data_prob_pairs)
+    site_weights = np.array(probs, dtype=float)
+    data = np.empty((nsites, nnodes, nstates), dtype=float)
+    for site_index, site_data in enumerate(datas):
+        for i, na in enumerate(nodes):
+            data[site_index, i] = site_data[na]
+
+    # Initialize the per-edge rate matrix scaling factor guesses.
+    scaling_guesses = np.empty(nnodes-1, dtype=float)
+    for (na, nb), rate in guess_edge_to_rate.items():
+        eidx = node_to_idx[nb] - 1
+        scaling_guesses[eidx] = np.log(rate)
+
+    # Initialize temporary arrays for EM.
+    interact_trans = np.empty_like(transq)
+    interact_dwell = np.empty_like(transq)
+    trans_out = np.empty((nsites, nnodes-1), dtype=float)
+    dwell_out = np.empty((nsites, nnodes-1), dtype=float)
+
+    # Initialize EM function.
+    em = partial(get_em_displacement,
+            T, node_to_idx, site_weights, m,
+            transq, transp,
+            interact_trans, interact_dwell,
+            data,
+            root_distn1d,
+            trans_out, dwell_out)
+
+    # Do a few EM rounds.
+    print('doing a few EM rounds...')
+    x0 = np.exp(scaling_guesses)
+    print(x0)
+    for i in range(30):
+        x0 += em(x0)
+        print(x0)
+    scaling_guesses = np.log(x0)
+
+    fgh = partial(get_logscale_fgh,
+            T, node_to_idx, site_weights, m,
+            transq, transp, transp_grad,
+            data,
+            root_distn1d,
+            )
+    def f(X):
+        fx, gx, hx = fgh(X)
+        return -fx
+    def g(X):
+        fx, gx, hx = fgh(X)
+        return -gx
+    def h(X):
+        fx, gx, hx = fgh(X)
+        return -hx
+
+    x0 = scaling_guesses
+    result = scipy.optimize.minimize(f, x0, jac=g, hess=h, tol=1e-8,
+            method='trust-ncg')
+            #method='dogleg')
+    print(result)
+    print(np.exp(result.x))
 
 
 
@@ -714,7 +817,10 @@ def main():
     #f = do_cythonized_em
     #f = do_cythonized_accelerated_em
     #f = do_gradient_search
-    f = do_jj97_qn2_search
+    #f = do_jj97_qn2_search
+    f = do_hessian_search
+
+    print('starting search...')
     f(T, root, edge_to_rate, edge_to_Q, root_distn1d,
             data_prob_pairs, guess_edge_to_rate)
 
