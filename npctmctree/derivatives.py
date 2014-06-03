@@ -17,9 +17,11 @@ from npmctree.cyfels import iid_likelihoods
 def get_log_likelihood_info(
         T, node_to_idx, site_weights, m,
         transq_unscaled, transp_ws, transp_mod_ws,
-        data, root_distn1d, scale, degree=0):
+        data, root_distn1d, degree, scale):
     """
     """
+    #TODO add docstring and unit tests!
+
     # Request input validation for Cythonized functions.
     validation = 1
 
@@ -111,28 +113,28 @@ def get_log_likelihood_info(
                     validation,
                     )
 
-    print('lhood diff xy:')
-    print(lhood_diff_xy)
+    #print('lhood diff xy:')
+    #print(lhood_diff_xy)
 
     # Compute the hessian.
 
     # l_xy / l
     a = lhood_diff_xy / likelihoods[None, None, :]
-    print('a shape:', a.shape)
+    #print('a shape:', a.shape)
 
     # l_x * l_y (vectorized outer product)
     b = np.einsum('i...,j...->ij...', lhood_gradients, lhood_gradients)
-    print('b shape:', b.shape)
+    #print('b shape:', b.shape)
 
     # l * l
     c = (likelihoods * likelihoods)[None, None, :]
-    print('c shape:', c.shape)
+    #print('c shape:', c.shape)
 
-    print('hessian parts:')
-    print(a)
-    print(b)
-    print(c)
-    print()
+    #print('hessian parts:')
+    #print(a)
+    #print(b)
+    #print(c)
+    #print()
 
     ll_hessian = np.dot(a - b/c, site_weights)
 

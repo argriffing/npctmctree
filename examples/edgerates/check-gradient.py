@@ -125,6 +125,56 @@ def help_get_ll(T, root, root_distn1d, node_to_data_fvec1d, edge_to_Q,
     return np.log(lhood)
 
 
+def help_get_iid_info(T, root, root_distn1d, edge_to_Q,
+        nstates, leaves, internal_nodes,
+        data_weight_pairs, degree, guess_edge_to_rate):
+    """
+    """
+    # unpack a bit
+    nleaves = len(leaves)
+    n = nstates
+
+    # Define a toposort node ordering and a corresponding csr matrix.
+    nodes = nx.topological_sort(T, [root])
+    node_to_idx = dict((na, i) for i, na in enumerate(nodes))
+    m = nx.to_scipy_sparse_matrix(T, nodes)
+
+    # Stack the transition rate matrices into a single array.
+    nnodes = len(nodes)
+    nstates = root_distn1d.shape[0]
+    n = nstates
+    transq = np.empty((nnodes-1, nstates, nstates), dtype=float)
+    for (na, nb), Q in edge_to_Q.items():
+        edge_idx = node_to_idx[nb] - 1
+        transq[edge_idx] = Q
+
+    # Allocate a transition probability matrix array.
+    transp_ws = np.empty_like(transq)
+    transp_mod_ws = np.empty_like(transq)
+
+    # Stack the data into a single array,
+    # and construct an array of site weights.
+    nsites = len(data_weight_pairs)
+    datas, weights = zip(*data_weight_pairs)
+    site_weights = np.array(weights, dtype=float)
+    data = np.empty((nsites, nnodes, nstates), dtype=float)
+    for site_index, site_data in enumerate(datas):
+        for i, na in enumerate(nodes):
+            data[site_index, i] = site_data[na]
+
+    # Initialize the per-edge rate matrix scaling factor guesses.
+    scaling_guesses = np.empty(nnodes-1, dtype=float)
+    for (na, nb), rate in guess_edge_to_rate.items():
+        eidx = node_to_idx[nb] - 1
+        scaling_guesses[eidx] = rate
+
+    #
+    return get_log_likelihood_info(
+            T, node_to_idx, site_weights, m,
+            transq, transp_ws, transp_mod_ws,
+            data, root_distn1d, degree, scaling_guesses)
+
+
 def check_iid_info(T, root, root_distn1d, edge_to_Q,
         nstates, leaves, internal_nodes):
     """
@@ -168,45 +218,11 @@ def check_iid_info(T, root, root_distn1d, edge_to_Q,
     for edge in T.edges():
         guess_edge_to_rate[edge] = 0.2
 
-    # Define a toposort node ordering and a corresponding csr matrix.
-    nodes = nx.topological_sort(T, [root])
-    node_to_idx = dict((na, i) for i, na in enumerate(nodes))
-    m = nx.to_scipy_sparse_matrix(T, nodes)
+    degree = 2
+    f, g, h = help_get_iid_info(T, root, root_distn1d, edge_to_Q,
+            nstates, leaves, internal_nodes,
+            data_weight_pairs, degree, guess_edge_to_rate)
 
-    # Stack the transition rate matrices into a single array.
-    nnodes = len(nodes)
-    nstates = root_distn1d.shape[0]
-    n = nstates
-    transq = np.empty((nnodes-1, nstates, nstates), dtype=float)
-    for (na, nb), Q in edge_to_Q.items():
-        edge_idx = node_to_idx[nb] - 1
-        transq[edge_idx] = Q
-
-    # Allocate a transition probability matrix array.
-    transp_ws = np.empty_like(transq)
-    transp_mod_ws = np.empty_like(transq)
-
-    # Stack the data into a single array,
-    # and construct an array of site weights.
-    nsites = len(data_weight_pairs)
-    datas, weights = zip(*data_weight_pairs)
-    site_weights = np.array(weights, dtype=float)
-    data = np.empty((nsites, nnodes, nstates), dtype=float)
-    for site_index, site_data in enumerate(datas):
-        for i, na in enumerate(nodes):
-            data[site_index, i] = site_data[na]
-
-    # Initialize the per-edge rate matrix scaling factor guesses.
-    scaling_guesses = np.empty(nnodes-1, dtype=float)
-    for (na, nb), rate in guess_edge_to_rate.items():
-        eidx = node_to_idx[nb] - 1
-        scaling_guesses[eidx] = rate
-
-    #
-    f, g, h = get_log_likelihood_info(
-            T, node_to_idx, site_weights, m,
-            transq, transp_ws, transp_mod_ws,
-            data, root_distn1d, scaling_guesses, degree=2)
     print('iid info:')
     print(f)
     print(g)
@@ -214,6 +230,62 @@ def check_iid_info(T, root, root_distn1d, edge_to_Q,
     print('eigvalsh(h):', eigvalsh(h))
     print('inv(h):')
     print(inv(h))
+    print()
+
+    # check finite differences results
+    eps = 1e-5
+    fn = partial(help_get_iid_info,
+            T, root, root_distn1d, edge_to_Q,
+            nstates, leaves, internal_nodes,
+            data_weight_pairs)
+    edges = list(T.edges())
+    edge_x = edges[0]
+    edge_y = edges[1]
+
+    print('iid finite central differences first derivative:')
+    d = guess_edge_to_rate.copy()
+    d[edge_x] -= eps
+    lla = fn(0, d)
+    d = guess_edge_to_rate.copy()
+    d[edge_x] += eps
+    llb = fn(0, d)
+    print(lla, llb)
+    print((llb - lla) / (2 * eps))
+    print()
+
+    print('finite central differences second derivative single edge:')
+    d = guess_edge_to_rate.copy()
+    llb = fn(0, d)
+    d = guess_edge_to_rate.copy()
+    d[edge_x] -= eps
+    lla = fn(0, d)
+    d = guess_edge_to_rate.copy()
+    d[edge_x] += eps
+    llc = fn(0, d)
+    print(lla, llb, llc)
+    print((llc - 2*llb + lla) / (eps * eps))
+    print()
+
+    # Approximation of mixed derivatives.
+    print('finite central differences second derivative two edges:')
+    d = guess_edge_to_rate.copy()
+    d[edge_x] -= eps
+    d[edge_y] -= eps
+    ll00 = fn(0, d)
+    d = guess_edge_to_rate.copy()
+    d[edge_x] += eps
+    d[edge_y] -= eps
+    ll10 = fn(0, d)
+    d = guess_edge_to_rate.copy()
+    d[edge_x] -= eps
+    d[edge_y] += eps
+    ll01 = fn(0, d)
+    d = guess_edge_to_rate.copy()
+    d[edge_x] += eps
+    d[edge_y] += eps
+    ll11 = fn(0, d)
+    print(ll00, ll01, ll10, ll11)
+    print((ll11 - ll10 - ll01 + ll00) / (4 * eps * eps))
     print()
 
 
