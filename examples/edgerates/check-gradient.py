@@ -125,9 +125,17 @@ def help_get_ll(T, root, root_distn1d, node_to_data_fvec1d, edge_to_Q,
     return np.log(lhood)
 
 
+def new_edges(edge_to_rate, edge_incr_pairs):
+    d = edge_to_rate.copy()
+    for edge, incr in edge_incr_pairs:
+        d[edge] = d[edge] + incr
+    return d
+
+
 def help_get_iid_info(T, root, root_distn1d, edge_to_Q,
         nstates, leaves, internal_nodes,
-        data_weight_pairs, degree, guess_edge_to_rate):
+        data_weight_pairs, edge_to_scale,
+        degree=0, use_log_scale=False):
     """
     """
     # unpack a bit
@@ -164,7 +172,7 @@ def help_get_iid_info(T, root, root_distn1d, edge_to_Q,
 
     # Initialize the per-edge rate matrix scaling factor guesses.
     scaling_guesses = np.empty(nnodes-1, dtype=float)
-    for (na, nb), rate in guess_edge_to_rate.items():
+    for (na, nb), rate in edge_to_scale.items():
         eidx = node_to_idx[nb] - 1
         scaling_guesses[eidx] = rate
 
@@ -172,7 +180,8 @@ def help_get_iid_info(T, root, root_distn1d, edge_to_Q,
     return get_log_likelihood_info(
             T, node_to_idx, site_weights, m,
             transq, transp_ws, transp_mod_ws,
-            data, root_distn1d, degree, scaling_guesses)
+            data, root_distn1d, scaling_guesses,
+            degree=degree, use_log_scale=use_log_scale)
 
 
 def check_iid_info(T, root, root_distn1d, edge_to_Q,
@@ -216,81 +225,82 @@ def check_iid_info(T, root, root_distn1d, edge_to_Q,
     # starting with an initial guess that is wrong.
     guess_edge_to_rate = {}
     for edge in T.edges():
-        guess_edge_to_rate[edge] = 0.2
+        guess_edge_to_rate[edge] = np.random.random()
 
     degree = 2
-    f, g, h = help_get_iid_info(T, root, root_distn1d, edge_to_Q,
-            nstates, leaves, internal_nodes,
-            data_weight_pairs, degree, guess_edge_to_rate)
+    for use_log_scale in (False, True):
+        print('use_log_scale:', use_log_scale)
+        print()
 
-    print('iid info:')
-    print(f)
-    print(g)
-    print(h)
-    print('eigvalsh(h):', eigvalsh(h))
-    print('inv(h):')
-    print(inv(h))
-    print()
+        if use_log_scale:
+            edge_to_scale = dict(
+                    (e, np.log(r)) for e, r in guess_edge_to_rate.items())
+        else:
+            edge_to_scale = guess_edge_to_rate.copy()
 
-    # check finite differences results
-    eps = 1e-5
-    fn = partial(help_get_iid_info,
-            T, root, root_distn1d, edge_to_Q,
-            nstates, leaves, internal_nodes,
-            data_weight_pairs)
-    edges = list(T.edges())
-    edge_x = edges[0]
-    edge_y = edges[1]
+        # Compute some likelihood surface info for the iid samples
+        f, g, h = help_get_iid_info(T, root, root_distn1d, edge_to_Q,
+                nstates, leaves, internal_nodes,
+                data_weight_pairs, edge_to_scale,
+                degree=degree, use_log_scale=use_log_scale)
 
-    print('iid finite central differences first derivative:')
-    d = guess_edge_to_rate.copy()
-    d[edge_x] -= eps
-    lla = fn(0, d)
-    d = guess_edge_to_rate.copy()
-    d[edge_x] += eps
-    llb = fn(0, d)
-    print(lla, llb)
-    print((llb - lla) / (2 * eps))
-    print()
 
-    print('finite central differences second derivative single edge:')
-    d = guess_edge_to_rate.copy()
-    llb = fn(0, d)
-    d = guess_edge_to_rate.copy()
-    d[edge_x] -= eps
-    lla = fn(0, d)
-    d = guess_edge_to_rate.copy()
-    d[edge_x] += eps
-    llc = fn(0, d)
-    print(lla, llb, llc)
-    print((llc - 2*llb + lla) / (eps * eps))
-    print()
+        print('iid info:')
+        print(f)
+        print(g)
+        print(h)
+        print('eigvalsh(h):', eigvalsh(h))
+        print('inv(h):')
+        print(inv(h))
+        print()
 
-    # Approximation of mixed derivatives.
-    print('finite central differences second derivative two edges:')
-    d = guess_edge_to_rate.copy()
-    d[edge_x] -= eps
-    d[edge_y] -= eps
-    ll00 = fn(0, d)
-    d = guess_edge_to_rate.copy()
-    d[edge_x] += eps
-    d[edge_y] -= eps
-    ll10 = fn(0, d)
-    d = guess_edge_to_rate.copy()
-    d[edge_x] -= eps
-    d[edge_y] += eps
-    ll01 = fn(0, d)
-    d = guess_edge_to_rate.copy()
-    d[edge_x] += eps
-    d[edge_y] += eps
-    ll11 = fn(0, d)
-    print(ll00, ll01, ll10, ll11)
-    print((ll11 - ll10 - ll01 + ll00) / (4 * eps * eps))
-    print()
+        # check finite differences results
+        eps = 1e-5
+        fn = partial(help_get_iid_info,
+                T, root, root_distn1d, edge_to_Q,
+                nstates, leaves, internal_nodes,
+                data_weight_pairs)
+        edges = list(T.edges())
+        edge_x = edges[0]
+        edge_y = edges[1]
+
+        print('iid finite central differences first derivative:')
+        d = new_edges(edge_to_scale, [(edge_x, -eps)])
+        lla = fn(d, use_log_scale=use_log_scale)
+        d = new_edges(edge_to_scale, [(edge_x, +eps)])
+        llb = fn(d, use_log_scale=use_log_scale)
+        print(lla, llb)
+        print((llb - lla) / (2 * eps))
+        print()
+
+        print('finite central differences second derivative single edge:')
+        d = edge_to_scale.copy()
+        llb = fn(d, use_log_scale=use_log_scale)
+        d = new_edges(edge_to_scale, [(edge_x, -eps)])
+        lla = fn(d, use_log_scale=use_log_scale)
+        d = new_edges(edge_to_scale, [(edge_x, +eps)])
+        llc = fn(d, use_log_scale=use_log_scale)
+        print(lla, llb, llc)
+        print((llc - 2*llb + lla) / (eps * eps))
+        print()
+
+        # Approximation of mixed derivatives.
+        print('finite central differences second derivative two edges:')
+        d = new_edges(edge_to_scale, [(edge_x, -eps), (edge_y, -eps)])
+        ll00 = fn(d, use_log_scale=use_log_scale)
+        d = new_edges(edge_to_scale, [(edge_x, +eps), (edge_y, -eps)])
+        ll10 = fn(d, use_log_scale=use_log_scale)
+        d = new_edges(edge_to_scale, [(edge_x, -eps), (edge_y, +eps)])
+        ll01 = fn(d, use_log_scale=use_log_scale)
+        d = new_edges(edge_to_scale, [(edge_x, +eps), (edge_y, +eps)])
+        ll11 = fn(d, use_log_scale=use_log_scale)
+        print(ll00, ll01, ll10, ll11)
+        print((ll11 - ll10 - ll01 + ll00) / (4 * eps * eps))
+        print()
 
 
 def main():
-    np.random.seed(1234)
+    np.random.seed(12345)
 
     # Define the size of the state space
     # which will be constant across the whole tree.

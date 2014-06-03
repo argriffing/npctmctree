@@ -17,10 +17,22 @@ from npmctree.cyfels import iid_likelihoods
 def get_log_likelihood_info(
         T, node_to_idx, site_weights, m,
         transq_unscaled, transp_ws, transp_mod_ws,
-        data, root_distn1d, degree, scale):
+        data, root_distn1d, scale,
+        degree=0, use_log_scale=False):
     """
     """
     #TODO add docstring and unit tests!
+
+    # If we are using log scale then the scale parameter
+    # is a vector of logarithms of edge-specific rate scaling factors.
+    # In that case use exp(scale) for the rates,
+    # and adjust the gradient and hessian by multiplying by
+    # exp(log_rate) and exp(log_rate_x + log_rate_y) respectively.
+    # For example using math notation,
+    # log(f(exp(x)))' == exp(x) f'(exp(x)) / f(exp(x)).
+    if use_log_scale:
+        log_rates = scale
+        scale = np.exp(log_rates)
 
     # Request input validation for Cythonized functions.
     validation = 1
@@ -81,7 +93,10 @@ def get_log_likelihood_info(
                 )
 
     # Compute the log likelihood gradient.
+    # Adjust for log scale if necessary.
     ll_gradient = np.dot(lhood_gradients / likelihoods[None, :], site_weights)
+    if use_log_scale:
+        ll_gradient = ll_gradient * scale
 
     # If the degree is limited to one then we are done.
     if degree == 1:
@@ -136,7 +151,11 @@ def get_log_likelihood_info(
     #print(c)
     #print()
 
+    # Compute the hessian.
+    # Adjust for log scale if necessary.
     ll_hessian = np.dot(a - b/c, site_weights)
+    if use_log_scale:
+        ll_hessian = ll_hessian * np.outer(scale, scale) + np.diag(ll_gradient)
 
     return ll_total, ll_gradient, ll_hessian
 
