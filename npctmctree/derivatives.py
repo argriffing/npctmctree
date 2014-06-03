@@ -7,6 +7,12 @@ defining edge-specific scaling factors or their logarithms.
 """
 from __future__ import division, print_function, absolute_import
 
+import numpy as np
+
+from scipy.linalg import expm
+
+from npmctree.cyfels import iid_likelihoods
+
 
 def get_log_likelihood_info(
         T, node_to_idx, site_weights, m,
@@ -61,8 +67,8 @@ def get_log_likelihood_info(
     for edge in T.edges():
         na, nb = edge
         eidx = node_to_idx[nb] - 1
-        transp_mod_ws[...] = transp
-        transp_mod_ws[eidx] = np.dot(transq_unscaled[eidx], transp[eidx])
+        transp_mod_ws[...] = transp_ws
+        transp_mod_ws[eidx] = np.dot(transq_unscaled[eidx], transp_ws[eidx])
         iid_likelihoods(
                 m.indices, m.indptr,
                 transp_mod_ws,
@@ -81,39 +87,52 @@ def get_log_likelihood_info(
 
     # To compute the hessian,
     # for each edge pair adjust the transition probability matrix.
-    lhood_diff_xy = np.empty(nnodes-1, nnodes-1, nsites), dtype=float)
-    for edge0 in T.edges():
-        na0, nb0 = edge
+    lhood_diff_xy = np.ones((nnodes-1, nnodes-1, nsites), dtype=float) * 666
+    edges = list(T.edges())
+    for edge0 in edges:
+        na0, nb0 = edge0
         eidx0 = node_to_idx[nb0] - 1
         Q0 = transq_unscaled[eidx0]
-        for edge1 in T.edges():
+        for edge1 in edges:
             na1, nb1 = edge1
             eidx1 = node_to_idx[nb1] - 1
             Q1 = transq_unscaled[eidx1]
 
             # Compute the hessian.
-            transp_mod_ws[...] = transp
-            transp_mod_ws[eidx0] = np.dot(Q0, transp[eidx0])
-            transp_mod_ws[eidx1] = np.dot(Q1, transp[eidx1])
+            transp_mod_ws[...] = transp_ws
+            transp_mod_ws[eidx0, :, :] = np.dot(Q0, transp_mod_ws[eidx0])
+            transp_mod_ws[eidx1, :, :] = np.dot(Q1, transp_mod_ws[eidx1])
             iid_likelihoods(
                     m.indices, m.indptr,
                     transp_mod_ws,
                     data,
                     root_distn1d,
-                    lhood_diff_xy[eidx0, eidx1],
+                    lhood_diff_xy[eidx0, eidx1, :],
                     validation,
                     )
+
+    print('lhood diff xy:')
+    print(lhood_diff_xy)
 
     # Compute the hessian.
 
     # l_xy / l
     a = lhood_diff_xy / likelihoods[None, None, :]
+    print('a shape:', a.shape)
 
     # l_x * l_y (vectorized outer product)
-    b = np.einsum('i...,j...', lhood_gradients, lhood_gradients)
+    b = np.einsum('i...,j...->ij...', lhood_gradients, lhood_gradients)
+    print('b shape:', b.shape)
 
     # l * l
     c = (likelihoods * likelihoods)[None, None, :]
+    print('c shape:', c.shape)
+
+    print('hessian parts:')
+    print(a)
+    print(b)
+    print(c)
+    print()
 
     ll_hessian = np.dot(a - b/c, site_weights)
 

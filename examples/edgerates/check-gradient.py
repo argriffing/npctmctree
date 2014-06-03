@@ -9,7 +9,7 @@ from collections import defaultdict
 import networkx as nx
 import numpy as np
 from numpy.testing import assert_allclose, assert_
-from scipy.linalg import expm, expm_frechet
+from scipy.linalg import inv, eigvalsh, expm, expm_frechet
 import scipy.optimize
 
 import npmctree
@@ -136,7 +136,7 @@ def check_iid_info(T, root, root_distn1d, edge_to_Q,
     n = nstates
 
     data_weight_pairs = []
-    nsites = 5
+    nsites = 2
     for i in range(nsites):
 
         # Sample a random assignment.
@@ -205,17 +205,20 @@ def check_iid_info(T, root, root_distn1d, edge_to_Q,
     #
     f, g, h = get_log_likelihood_info(
             T, node_to_idx, site_weights, m,
-            transq_unscaled, transp_ws, transp_mod_ws,
+            transq, transp_ws, transp_mod_ws,
             data, root_distn1d, scaling_guesses, degree=2)
     print('iid info:')
     print(f)
     print(g)
     print(h)
+    print('eigvalsh(h):', eigvalsh(h))
+    print('inv(h):')
+    print(inv(h))
     print()
 
 
 def main():
-    np.random.seed(12345)
+    np.random.seed(1234)
 
     # Define the size of the state space
     # which will be constant across the whole tree.
