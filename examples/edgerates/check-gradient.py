@@ -229,6 +229,7 @@ def main():
     edge_x = edges[1]
     edge_y = edges[2]
 
+    # Approximation of mixed derivatives.
     print('finite central differences second derivative two edges:')
     d = edge_to_rate.copy()
     d[edge_x] -= eps
