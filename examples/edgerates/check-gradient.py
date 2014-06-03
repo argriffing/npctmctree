@@ -19,6 +19,7 @@ from npmctree.dynamic_fset_lhood import get_lhood, get_edge_to_distn2d
 
 import npctmctree
 from npctmctree.cyem import expectation_step
+from npctmctree.derivatives import get_log_likelihood_info
 
 
 def get_tree_info():
@@ -122,6 +123,95 @@ def help_get_ll(T, root, root_distn1d, node_to_data_fvec1d, edge_to_Q,
     lhood = help_get_lhood(T, root,
             root_distn1d, node_to_data_fvec1d, edge_to_Q, edge_to_rate)
     return np.log(lhood)
+
+
+def check_iid_info(T, root, root_distn1d, edge_to_Q,
+        nstates, leaves, internal_nodes):
+    """
+    Log likelihood and its gradient and hessian, for iid observations.
+
+    """
+    # unpack a bit
+    nleaves = len(leaves)
+    n = nstates
+
+    data_weight_pairs = []
+    nsites = 5
+    for i in range(nsites):
+
+        # Sample a random assignment.
+        assignment = np.random.randint(0, nstates, size=nleaves)
+
+        # Get the map from leaf to state.
+        leaf_to_state = dict(zip(leaves, assignment))
+
+        # Define the data associated with this assignment.
+        # All leaf states are fully observed.
+        # All internal states are completely unobserved.
+        node_to_data_fvec1d = {}
+        for node in leaves:
+            state = leaf_to_state[node]
+            fvec1d = np.zeros(n, dtype=bool)
+            fvec1d[state] = True
+            node_to_data_fvec1d[node] = fvec1d
+        for node in internal_nodes:
+            fvec1d = np.ones(n, dtype=bool)
+            node_to_data_fvec1d[node] = fvec1d
+
+        # Add the data object into the array.
+        pair = (node_to_data_fvec1d, 1)
+        data_weight_pairs.append(pair)
+
+    # Try to guess the edge-specific scaling factors using EM,
+    # starting with an initial guess that is wrong.
+    guess_edge_to_rate = {}
+    for edge in T.edges():
+        guess_edge_to_rate[edge] = 0.2
+
+    # Define a toposort node ordering and a corresponding csr matrix.
+    nodes = nx.topological_sort(T, [root])
+    node_to_idx = dict((na, i) for i, na in enumerate(nodes))
+    m = nx.to_scipy_sparse_matrix(T, nodes)
+
+    # Stack the transition rate matrices into a single array.
+    nnodes = len(nodes)
+    nstates = root_distn1d.shape[0]
+    n = nstates
+    transq = np.empty((nnodes-1, nstates, nstates), dtype=float)
+    for (na, nb), Q in edge_to_Q.items():
+        edge_idx = node_to_idx[nb] - 1
+        transq[edge_idx] = Q
+
+    # Allocate a transition probability matrix array.
+    transp_ws = np.empty_like(transq)
+    transp_mod_ws = np.empty_like(transq)
+
+    # Stack the data into a single array,
+    # and construct an array of site weights.
+    nsites = len(data_weight_pairs)
+    datas, weights = zip(*data_weight_pairs)
+    site_weights = np.array(weights, dtype=float)
+    data = np.empty((nsites, nnodes, nstates), dtype=float)
+    for site_index, site_data in enumerate(datas):
+        for i, na in enumerate(nodes):
+            data[site_index, i] = site_data[na]
+
+    # Initialize the per-edge rate matrix scaling factor guesses.
+    scaling_guesses = np.empty(nnodes-1, dtype=float)
+    for (na, nb), rate in guess_edge_to_rate.items():
+        eidx = node_to_idx[nb] - 1
+        scaling_guesses[eidx] = rate
+
+    #
+    f, g, h = get_log_likelihood_info(
+            T, node_to_idx, site_weights, m,
+            transq_unscaled, transp_ws, transp_mod_ws,
+            data, root_distn1d, scaling_guesses, degree=2)
+    print('iid info:')
+    print(f)
+    print(g)
+    print(h)
+    print()
 
 
 def main():
@@ -266,6 +356,10 @@ def main():
     print(l, l_x, l_y, l_xy)
     print(l_xy / l - (l_x * l_y) / (l * l))
     print()
+
+    # Check log likelihood info for i.i.d. samples.
+    check_iid_info(T, root, root_distn1d, edge_to_Q,
+            nstates, leaves, internal_nodes)
 
 
 if __name__ == '__main__':
