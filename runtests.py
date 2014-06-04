@@ -6,7 +6,6 @@ Run tests, building the project first.
 This is from the scipy runtests.py script.
 
 """
-
 from __future__ import division, print_function, absolute_import
 
 
