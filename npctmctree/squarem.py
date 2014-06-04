@@ -51,6 +51,8 @@ def _modify_step_length(a, L, step):
         Cheaply maps step length to parameter values.
 
     """
+    if a >= 0:
+        raise Exception('non-negative step length ' + str(a))
     if a > -1:
         return a
     L0 = L(step(0))

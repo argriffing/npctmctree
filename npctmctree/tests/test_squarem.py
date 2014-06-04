@@ -4,9 +4,14 @@ from __future__ import division, print_function, absolute_import
 
 import numpy as np
 from numpy.testing import assert_equal
+import scipy.stats
+
+import npctmctree
+from npctmctree.squarem import squarem
 
 
 def test_table_2():
+    # poisson mixture estimation
     # init the data
     n = 10
     freqs = np.array([162, 267, 271, 185, 111, 61, 27, 8, 3, 1])
@@ -29,10 +34,37 @@ def test_table_2():
         mu_star = mu_star_numer / mu_star_denom
         t_star = np.array([p_star, mu_star[0], mu_star[1]])
         return t_star
+    
+    def log_likelihood(t):
+        p = t[0]
+        mu = t[1:]
+        n = 10
+        rv0 = scipy.stats.poisson(mu[0])
+        rv1 = scipy.stats.poisson(mu[1])
+        a = p * rv0.pmf(deaths)
+        b = (1 - p) * rv1.pmf(deaths)
+        try:
+            return freqs.dot(np.log(a+b))
+        except RuntimeWarning as e:
+            print(p, mu)
+            print(a+b)
+            raise
 
     t0 = np.array([0.6, 10, 20])
-    t = t0
-    for i in range(1000):
-        t = em_update(t)
-        print(t)
+    #t = t0
+    #for i in range(1000):
+        #t = em_update(t)
+        #print(t)
+
+    #a, b = squarem(t0, em_update, L=None, atol=1e-7, em_maxcalls=10000)
+    for i in range(100):
+        t0 = np.array([
+            np.random.uniform(0.05, 0.95),
+            np.random.uniform(0, 100),
+            np.random.uniform(0, 100),
+            ])
+        print(t0)
+        a, b = squarem(t0, em_update, log_likelihood)
+        print(a)
+        print(b)
 
