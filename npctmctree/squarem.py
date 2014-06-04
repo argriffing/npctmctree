@@ -75,7 +75,7 @@ def _modify_step_length(a, L, step):
     if Lneg1 < L0:
         print('step length:', a)
         print(Lneg1, '<', L0)
-        raise Exception('ascent property of EM is violated')
+        raise Exception('possibly ascent property of EM is violated')
     # remove me
     while Ln < L0:
         print('need to adjust the step size because', Ln, L0)
@@ -118,8 +118,8 @@ def squarem(t0, em_update, L=None, atol=1e-7, em_maxcalls=10000):
         t1 = em_update(t0)
         t2 = em_update(t1)
         r = t1 - t0
-        v = (t2 - t1) - r
-        step = partial(_step, t1, r, v)
+        v = (t2 - t1) - r  # t2 + t0
+        step = partial(_step, t0, r, v)
         a = _compute_step_length(r, v)
         if L is not None:
             a = _modify_step_length(a, L, step)

@@ -6,6 +6,7 @@ import numpy as np
 from numpy.testing import assert_equal
 import scipy.stats
 from scipy.misc import logsumexp
+from scipy.special import log1p
 
 import npctmctree
 from npctmctree.squarem import squarem
@@ -141,11 +142,12 @@ def test_table_2():
         ll = 0
         for i in range(n):
             loga = np.log(p) + rv0.logpmf(deaths[i])
-            logb = np.log(1-p) + rv1.logpmf(deaths[i])
+            logb = log1p(-p) + rv1.logpmf(deaths[i])
             ll += freqs[i] * logsumexp([loga, logb])
         return ll
 
     # from table in slides
+    # mle should be p0=0.3599, mu0=1.256, mu1=2.663
     t0 = np.array([0.3, 1.0, 2.5])
     #t0 = np.array([0.28, 1.06, 2.59])
     result = squarem(t0, em_update, log_likelihood)
