@@ -33,17 +33,25 @@ def poisson_mix_log_likelihood(counts, weights, mix, mu):
 
 def log_weights_to_distn(log_weights):
     # Try to be a bit clever about scaling.
-    min_log_weight = np.min(log_weights)
-    reduced_weights = np.exp(log_weights - min_log_weight)
-    distn = reduced_weights / reduced_weights.sum()
-    #print('distribution update:', distn)
+    print('log weights:', log_weights)
+    m = min(x for x in log_weights if x > -np.inf)
+    reduced_weights = [
+            np.exp(x - m) if x > -np.inf else 0 for x in log_weights]
+    distn = np.array(reduced_weights) / np.sum(reduced_weights)
     return distn
+    #print(log_weights)
+    #min_log_weight = np.min(log_weights)
+    #reduced_weights = np.exp(log_weights - min_log_weight)
+    #distn = reduced_weights / reduced_weights.sum()
+    ##print('distribution update:', distn)
+    #return distn
 
 
 def test_table_2():
     # poisson mixture estimation
     # init the data
     # mle should be p0=0.3599, mu0=1.256, mu1=2.663
+    np.random.seed(1234)
     n = 10
     freqs = np.array([162, 267, 271, 185, 111, 61, 27, 8, 3, 1], dtype=float)
     deaths = np.arange(n)
@@ -67,23 +75,36 @@ def test_table_2():
         ll_before_update = log_likelihood(t)
         p0 = t[0]
         mu = t[1:]
-        p = np.array([p0, 1-p0])
         # define the poisson components
         rs = [scipy.stats.poisson(m) for m in mu]
         # compute the per-count posterior distribution over
         pi_log_weights = np.empty((n, 2), dtype=float)
         # vectorize this later
         for i in range(n):
-            for j in range(2):
-                logpmf = np.log(p[j]) + rs[j].logpmf(deaths[i])
-                #print('log pmf:', logpmf)
-                pi_log_weights[i, j] = logpmf
+            if p0 > 0:
+                alpha = np.log(p0)
+                beta = rs[0].logpmf(deaths[i])
+                loga = alpha + beta
+                if np.isnan(loga):
+                    print('nan', alpha, beta, loga)
+            else:
+                loga = -np.inf
+            if p0 < 1:
+                alpha = log1p(-p0)
+                beta = rs[1].logpmf(deaths[i])
+                logb = alpha + beta
+                if np.isnan(logb):
+                    print('nan', alpha, beta, logb)
+            else:
+                logb = -np.inf
+            pi_log_weights[i, 0] = loga
+            pi_log_weights[i, 1] = logb
         # convert log weights to a distribution, being careful about scaling
         pi = np.empty((n, 2), dtype=float)
         for i in range(n):
             pi[i] = log_weights_to_distn(pi_log_weights[i])
-        #pi_weights[:, 0] = p * np.power(mu[0], deaths) * np.exp(-mu[0])
-        #pi_weights[:, 1] = (1-p) * np.power(mu[1], deaths) * np.exp(-mu[1])
+        #pi_weights[:, 0] = p0 * np.power(mu[0], deaths) * np.exp(-mu[0])
+        #pi_weights[:, 1] = (1-p0) * np.power(mu[1], deaths) * np.exp(-mu[1])
         #pi = pi_weights / pi_weights.sum(axis=1)[:, None]
         # compute updated parameter values
         p_star = freqs.dot(pi[:, 0]) / freqs.sum()
@@ -92,7 +113,8 @@ def test_table_2():
         for j in range(2):
             numer = sum(deaths[i] * freqs[i] * pi[i, j] for i in range(n))
             denom = sum(freqs[i] * pi[i, j] for i in range(n))
-            mu_star[j] = numer / denom
+            if numer:
+                mu_star[j] = numer / denom
         #mu_star_numer = (deaths[:, None] * freqs[:, None] * pi).sum(axis=0)
         #mu_star_denom = (freqs[:, None] * pi).sum(axis=0)
         #try:
@@ -103,10 +125,9 @@ def test_table_2():
             #raise
         t_star = np.array([p_star, mu_star[0], mu_star[1]])
         ll_after_update = log_likelihood(t_star)
-        if ll_after_update < ll_before_update:
-            print('log likelihoods:', ll_before_update, ll_after_update)
-            raise Exception('em step reduced observed data log likelihood')
-        #print('attempting em output:', t_star)
+        #if ll_after_update < ll_before_update:
+            #print('log likelihoods:', ll_before_update, ll_after_update)
+            #raise Exception('em step reduced observed data log likelihood')
         if not inbounds(t_star):
             raise Exception('em update output is out of bounds (%s)' % t_star)
         return t_star
@@ -146,12 +167,16 @@ def test_table_2():
             ll += freqs[i] * logsumexp([loga, logb])
         return ll
 
+    # the following starting point was causing nans
+    t0 = np.array([0.68539781, 14.9833716, 74.60634091])
+    #"""
     # from table in slides
     # mle should be p0=0.3599, mu0=1.256, mu1=2.663
-    t0 = np.array([0.3, 1.0, 2.5])
+    #t0 = np.array([0.3, 1.0, 2.5])
     #t0 = np.array([0.28, 1.06, 2.59])
     result = squarem(t0, em_update, log_likelihood)
     print(result)
+    #"""
 
     """
     t0 = np.array([0.6, 10, 20])
