@@ -63,7 +63,7 @@ def test_table_2():
             return False
         if p0 > 1:
             return False
-        if np.any(mu < 0):
+        if np.any(mu <= 0):
             return False
         return True
 
@@ -86,7 +86,7 @@ def test_table_2():
                 beta = rs[0].logpmf(deaths[i])
                 loga = alpha + beta
                 if np.isnan(loga):
-                    print('nan', alpha, beta, loga)
+                    print('nan', mu[0], deaths[i], alpha, beta, loga)
             else:
                 loga = -np.inf
             if p0 < 1:
@@ -94,7 +94,7 @@ def test_table_2():
                 beta = rs[1].logpmf(deaths[i])
                 logb = alpha + beta
                 if np.isnan(logb):
-                    print('nan', alpha, beta, logb)
+                    print('nan', mu[1], deaths[i], alpha, beta, logb)
             else:
                 logb = -np.inf
             pi_log_weights[i, 0] = loga
