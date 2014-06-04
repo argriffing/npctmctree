@@ -12,6 +12,10 @@ import npctmctree
 from npctmctree.squarem import squarem
 
 
+class DegenerateMixtureError(Exception):
+    pass
+
+
 def _xdivy(x, y):
     if not x:
         return 0
@@ -33,7 +37,7 @@ def poisson_mix_log_likelihood(counts, weights, mix, mu):
 
 def log_weights_to_distn(log_weights):
     # Try to be a bit clever about scaling.
-    print('log weights:', log_weights)
+    #print('log weights:', log_weights)
     m = min(x for x in log_weights if x > -np.inf)
     reduced_weights = [
             np.exp(x - m) if x > -np.inf else 0 for x in log_weights]
@@ -115,6 +119,8 @@ def test_table_2():
             denom = sum(freqs[i] * pi[i, j] for i in range(n))
             if numer:
                 mu_star[j] = numer / denom
+            else:
+                raise DegenerateMixtureError('a poisson mean is zero')
         #mu_star_numer = (deaths[:, None] * freqs[:, None] * pi).sum(axis=0)
         #mu_star_denom = (freqs[:, None] * pi).sum(axis=0)
         #try:
@@ -167,16 +173,16 @@ def test_table_2():
             ll += freqs[i] * logsumexp([loga, logb])
         return ll
 
+    """
     # the following starting point was causing nans
     t0 = np.array([0.68539781, 14.9833716, 74.60634091])
-    #"""
     # from table in slides
     # mle should be p0=0.3599, mu0=1.256, mu1=2.663
     #t0 = np.array([0.3, 1.0, 2.5])
     #t0 = np.array([0.28, 1.06, 2.59])
     result = squarem(t0, em_update, log_likelihood)
     print(result)
-    #"""
+    """
 
     """
     t0 = np.array([0.6, 10, 20])
@@ -186,19 +192,24 @@ def test_table_2():
         print(t)
     """
 
-    """
+    #"""
     #a, b = squarem(t0, em_update, L=None, atol=1e-7, em_maxcalls=10000)
+    ndegenerate = 0
     for i in range(100):
         print('iteration', i)
-        t0 = np.array([
-            np.random.uniform(0.05, 0.95),
-            np.random.uniform(0, 100),
-            np.random.uniform(0, 100),
-            ])
-        print(t0)
-        a, b = squarem(t0, em_update, log_likelihood)
-        #a, b = squarem(t0, em_update, likelihood)
-        print(a)
-        print(b)
-    """
+        try:
+            t0 = np.array([
+                np.random.uniform(0.05, 0.95),
+                np.random.uniform(0, 100),
+                np.random.uniform(0, 100),
+                ])
+            print(t0)
+            a, b = squarem(t0, em_update, log_likelihood)
+            #a, b = squarem(t0, em_update, likelihood)
+            print(a)
+            print(b)
+        except DegenerateMixtureError as e:
+            ndegenerate += 1
+            print('found', ndegenerate, 'degenerate solutions so far')
+    #"""
 
