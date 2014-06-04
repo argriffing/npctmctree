@@ -173,7 +173,7 @@ def test_table_2():
             ll += freqs[i] * logsumexp([loga, logb])
         return ll
 
-    """
+    #"""
     # the following starting point was causing nans
     t0 = np.array([0.68539781, 14.9833716, 74.60634091])
     # from table in slides
@@ -182,7 +182,7 @@ def test_table_2():
     #t0 = np.array([0.28, 1.06, 2.59])
     result = squarem(t0, em_update, log_likelihood)
     print(result)
-    """
+    #"""
 
     """
     t0 = np.array([0.6, 10, 20])
@@ -192,7 +192,7 @@ def test_table_2():
         print(t)
     """
 
-    #"""
+    """
     #a, b = squarem(t0, em_update, L=None, atol=1e-7, em_maxcalls=10000)
     ndegenerate = 0
     for i in range(100):
@@ -211,5 +211,5 @@ def test_table_2():
         except DegenerateMixtureError as e:
             ndegenerate += 1
             print('found', ndegenerate, 'degenerate solutions so far')
-    #"""
+    """
 

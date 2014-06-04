@@ -78,7 +78,7 @@ def _modify_step_length(a, L, step):
         raise Exception('possibly ascent property of EM is violated')
     # remove me
     while Ln < L0:
-        print('need to adjust the step size because', Ln, L0)
+        print('need to adjust the step size because', Ln, '<', L0)
         a = (a - 1) / 2
         Ln = L(step(a))
     return a
