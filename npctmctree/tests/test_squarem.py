@@ -5,6 +5,7 @@ from __future__ import division, print_function, absolute_import
 import numpy as np
 from numpy.testing import assert_equal
 import scipy.stats
+from scipy.misc import logsumexp
 
 import npctmctree
 from npctmctree.squarem import squarem
@@ -18,46 +19,102 @@ def _xdivy(x, y):
 xdivy = np.vectorize(_xdivy)
 
 
+"""
+def poisson_mix_log_likelihood(counts, weights, mix, mu):
+    # counts : a data vector of observed counts
+    # weights : the number of times each count was observed
+    # mix : finite distribution over mixture components
+    # mu : means of poisson mixture components
+    assert_equal(counts.shape, weights.shape)
+    assert_equal(mix.shape, mu.shape)
+"""
+
+
+def log_weights_to_distn(log_weights):
+    # Try to be a bit clever about scaling.
+    min_log_weight = np.min(log_weights)
+    reduced_weights = np.exp(log_weights - min_log_weight)
+    distn = reduced_weights / reduced_weights.sum()
+    #print('distribution update:', distn)
+    return distn
+
+
 def test_table_2():
     # poisson mixture estimation
     # init the data
+    # mle should be p0=0.3599, mu0=1.256, mu1=2.663
     n = 10
     freqs = np.array([162, 267, 271, 185, 111, 61, 27, 8, 3, 1], dtype=float)
     deaths = np.arange(n)
 
+    def inbounds(t):
+        p0 = t[0]
+        mu = t[1:]
+        if p0 < 0:
+            return False
+        if p0 > 1:
+            return False
+        if np.any(mu < 0):
+            return False
+        return True
+
     # define the em update
     def em_update(t):
-        # unpack the parameters
-        p = t[0]
+        #print('attempting em input:', t)
+        if not inbounds(t):
+            raise Exception('input to the em update is out of bounds (%s)' % t)
+        ll_before_update = log_likelihood(t)
+        p0 = t[0]
         mu = t[1:]
-        # compute a summary
-        pi_weights = np.empty((n, 2), dtype=float)
-        pi_weights[:, 0] = p * np.power(mu[0], deaths) * np.exp(-mu[0])
-        pi_weights[:, 1] = (1-p) * np.power(mu[1], deaths) * np.exp(-mu[1])
-        pi = pi_weights / pi_weights.sum(axis=1)[:, None]
+        p = np.array([p0, 1-p0])
+        # define the poisson components
+        rs = [scipy.stats.poisson(m) for m in mu]
+        # compute the per-count posterior distribution over
+        pi_log_weights = np.empty((n, 2), dtype=float)
+        # vectorize this later
+        for i in range(n):
+            for j in range(2):
+                logpmf = np.log(p[j]) + rs[j].logpmf(deaths[i])
+                #print('log pmf:', logpmf)
+                pi_log_weights[i, j] = logpmf
+        # convert log weights to a distribution, being careful about scaling
+        pi = np.empty((n, 2), dtype=float)
+        for i in range(n):
+            pi[i] = log_weights_to_distn(pi_log_weights[i])
+        #pi_weights[:, 0] = p * np.power(mu[0], deaths) * np.exp(-mu[0])
+        #pi_weights[:, 1] = (1-p) * np.power(mu[1], deaths) * np.exp(-mu[1])
+        #pi = pi_weights / pi_weights.sum(axis=1)[:, None]
         # compute updated parameter values
         p_star = freqs.dot(pi[:, 0]) / freqs.sum()
         print('em step p_star:', p_star)
-        mu_star_numer = (deaths[:, None] * freqs[:, None] * pi).sum(axis=0)
-        mu_star_denom = (freqs[:, None] * pi).sum(axis=0)
-        try:
-            mu_star = xdivy(mu_star_numer, mu_star_denom)
-        except RuntimeWarning:
-            print(mu_star_numer)
-            print(mu_star_denom)
-            raise
+        mu_star = np.zeros(2, dtype=float)
+        for j in range(2):
+            numer = sum(deaths[i] * freqs[i] * pi[i, j] for i in range(n))
+            denom = sum(freqs[i] * pi[i, j] for i in range(n))
+            mu_star[j] = numer / denom
+        #mu_star_numer = (deaths[:, None] * freqs[:, None] * pi).sum(axis=0)
+        #mu_star_denom = (freqs[:, None] * pi).sum(axis=0)
+        #try:
+            #mu_star = xdivy(mu_star_numer, mu_star_denom)
+        #except RuntimeWarning:
+            #print(mu_star_numer)
+            #print(mu_star_denom)
+            #raise
         t_star = np.array([p_star, mu_star[0], mu_star[1]])
+        ll_after_update = log_likelihood(t_star)
+        if ll_after_update < ll_before_update:
+            print('log likelihoods:', ll_before_update, ll_after_update)
+            raise Exception('em step reduced observed data log likelihood')
+        #print('attempting em output:', t_star)
+        if not inbounds(t_star):
+            raise Exception('em update output is out of bounds (%s)' % t_star)
         return t_star
 
     def likelihood(t):
+        if not inbounds(t):
+            return 0
         p = t[0]
         mu = t[1:]
-        print('before filter', p, mu, deaths)
-        if not (0 <= p <= 1):
-            return -np.inf
-        if np.any(mu < 0):
-            return -np.inf
-        print('after filter', p, mu, deaths)
         n = 10
         rv0 = scipy.stats.poisson(mu[0])
         rv1 = scipy.stats.poisson(mu[1])
@@ -66,43 +123,54 @@ def test_table_2():
         return np.prod(np.power((a + b), freqs))
     
     def log_likelihood(t):
+        if not inbounds(t):
+            return -np.inf
         p = t[0]
         mu = t[1:]
-        print('before filter', p, mu, deaths)
-        if not (0 <= p <= 1):
-            return -np.inf
-        if np.any(mu < 0):
-            return -np.inf
-        print('after filter', p, mu, deaths)
         n = 10
         rv0 = scipy.stats.poisson(mu[0])
         rv1 = scipy.stats.poisson(mu[1])
-        a = p * rv0.pmf(deaths)
-        b = (1 - p) * rv1.pmf(deaths)
-        try:
-            return freqs.dot(np.log(a+b))
-        except RuntimeWarning as e:
-            print(p, mu)
-            print(a+b)
-            raise
+        #a = p * rv0.pmf(deaths)
+        #b = (1 - p) * rv1.pmf(deaths)
+        #try:
+            #return freqs.dot(np.log(a+b))
+        #except RuntimeWarning as e:
+            #print(p, mu)
+            #print(a+b)
+            #raise
+        ll = 0
+        for i in range(n):
+            loga = np.log(p) + rv0.logpmf(deaths[i])
+            logb = np.log(1-p) + rv1.logpmf(deaths[i])
+            ll += freqs[i] * logsumexp([loga, logb])
+        return ll
 
+    # from table in slides
+    t0 = np.array([0.3, 1.0, 2.5])
+    #t0 = np.array([0.28, 1.06, 2.59])
+    result = squarem(t0, em_update, log_likelihood)
+    print(result)
+
+    """
     t0 = np.array([0.6, 10, 20])
     t = t0
     for i in range(1000):
-        t = em_update(t)
+        t, b = squarem(t0, em_update, log_likelihood)
         print(t)
+    """
 
     """
     #a, b = squarem(t0, em_update, L=None, atol=1e-7, em_maxcalls=10000)
     for i in range(100):
+        print('iteration', i)
         t0 = np.array([
             np.random.uniform(0.05, 0.95),
             np.random.uniform(0, 100),
             np.random.uniform(0, 100),
             ])
         print(t0)
-        #a, b = squarem(t0, em_update, log_likelihood)
-        a, b = squarem(t0, em_update, likelihood)
+        a, b = squarem(t0, em_update, log_likelihood)
+        #a, b = squarem(t0, em_update, likelihood)
         print(a)
         print(b)
     """

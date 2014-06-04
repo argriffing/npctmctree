@@ -13,7 +13,18 @@ from __future__ import division, print_function, absolute_import
 from functools import partial
 
 import numpy as np
+from numpy.testing import assert_equal
 from numpy.linalg import norm
+
+
+
+def poisson_mix_log_likelihood(counts, weights, mix, mu):
+    # counts : a data vector of observed counts
+    # weights : the number of times each count was observed
+    # mix : finite distribution over mixture components
+    # mu : means of poisson mixture components
+    assert_equal(counts.shape, weights.shape)
+    assert_equal(mix.shape, mu.shape)
 
 
 class counted_calls(object):
@@ -62,11 +73,12 @@ def _modify_step_length(a, L, step):
     # remove me
     Lneg1 = L(step(-1))
     if Lneg1 < L0:
+        print('step length:', a)
         print(Lneg1, '<', L0)
         raise Exception('ascent property of EM is violated')
     # remove me
     while Ln < L0:
-        print(Ln, L0)
+        print('need to adjust the step size because', Ln, L0)
         a = (a - 1) / 2
         Ln = L(step(a))
     return a
