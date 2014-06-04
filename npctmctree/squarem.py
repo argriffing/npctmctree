@@ -6,6 +6,8 @@ so to minimize licensing issues this Python code will be implemented
 according to descriptions in the literature.
 
 """
+from __future__ import division, print_function, absolute_import
+
 #TODO move this into scipy eventually
 
 from functools import partial
@@ -57,7 +59,14 @@ def _modify_step_length(a, L, step):
         return a
     L0 = L(step(0))
     Ln = L(step(a))
+    # remove me
+    Lneg1 = L(step(-1))
+    if Lneg1 < L0:
+        print(Lneg1, '<', L0)
+        raise Exception('ascent property of EM is violated')
+    # remove me
     while Ln < L0:
+        print(Ln, L0)
         a = (a - 1) / 2
         Ln = L(step(a))
     return a
