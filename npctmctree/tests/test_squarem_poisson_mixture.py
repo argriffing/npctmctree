@@ -182,27 +182,46 @@ def test_table_2():
     # This works for the vanilla fixed-point EM iteration,
     # requiring 2909 EM evaluations to reach 1e-8 absolute error
     # between iterations.
+    # With no step length adjustment
+    # this gives 75 fixed point evaluations for accelerated EM,
+    # whereas the tutorial says it should take only 72.
+    # With step length adjustment, too many evaluations are used.
+    # The tutorial claims that for this configuration
+    # no step length adjustment is necessary.
     """
     > setRNG(list(kind="Wichmann-Hill", normal.kind="Box-Muller", seed=123)
             + )
     > c(runif(1), runif(2, 0, 6))
     [1] 0.4462944 5.3433981 0.8713513
     """
-    t0 = np.array([0.4462944, 5.3433981, 0.8713513])
+    #atol = 1e-8
+    #t0 = np.array([0.4462944, 5.3433981, 0.8713513])
+
+    # from table in slides:
+    # mle should be p0=0.3599, mu0=1.256, mu1=2.663
+    # the following starting point was used in the paper and slides:
+    t0 = np.array([0.3, 1.0, 2.5])
+    # in the table in the slides, this starting guess iss associated
+    # with the following number of EM function evals (not objective function)
+    # for each of the various schemes:
+    # method  reported  observed
+    # EM      2055       255 (atol=1e-7)
+    # S1       396
+    # S2       477
+    # S3       576
+    # SqS1      66
+    # SqS2      84
+    # SqS3      66        66 (without step length adjustment, atol=1e-7)
 
     #"""
     # the following starting point was causing nans:
     #t0 = np.array([0.68539781, 14.9833716, 74.60634091])
-    # from table in slides:
-    # mle should be p0=0.3599, mu0=1.256, mu1=2.663
-    # the following starting point was used in the paper:
-    #t0 = np.array([0.3, 1.0, 2.5])
     #t0 = np.array([0.28, 1.06, 2.59])
     objective = counted_calls(log_likelihood)
     counted_em_update = counted_calls(em_update)
 
     # run the acclerated expectation maximization
-    atol = 1e-8
+    atol = 1e-7
     t = t0
     print('accelerated EM:')
     result = squarem(t, counted_em_update, objective, atol=atol)
