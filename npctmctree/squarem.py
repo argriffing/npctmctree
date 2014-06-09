@@ -36,7 +36,7 @@ class counted_calls(object):
         return self._f(*args, **kwargs)
 
 
-def _compute_step_length(r, v):
+def _compute_step_length(r, v, method=None):
     """
     Compute the step length.
 
@@ -52,7 +52,16 @@ def _compute_step_length(r, v):
     step length defined by scheme S1 when dot(r, v) < 0.
 
     """
-    return -norm(r) / norm(v)
+    if method is None:
+        method = 'SqS3'
+    if method == 'SqS1':
+        return np.dot(r, v) / np.dot(v, v)
+    elif method == 'SqS2':
+        return np.dot(r, r) / np.dot(r, v)
+    elif method == 'SqS3':
+        return -norm(r) / norm(v)
+    else:
+        raise Exception('unknown method')
 
 
 def _modify_step_length(a, L, step):
@@ -102,7 +111,7 @@ def _check_for_convergence(ta, tb, atol):
     return norm(tb - ta) < atol
 
 
-def squarem(t0, em_update, L=None, atol=1e-7, em_maxcalls=10000):
+def squarem(t0, em_update, L=None, atol=1e-7, em_maxcalls=10000, method=None):
     """
     Implementation of pseudocode from Table 1 in the paper.
 
@@ -126,7 +135,8 @@ def squarem(t0, em_update, L=None, atol=1e-7, em_maxcalls=10000):
         r = t1 - t0
         v = (t2 - t1) - r  # t2 - 2 t1 + t0
         step = partial(_step, t0, r, v)
-        a = _compute_step_length(r, v)
+        a = _compute_step_length(r, v, method)
+        print('step length:', a)
         # for testing, never modify step length
         #if L is not None:
             #a = _modify_step_length(a, L, step)
