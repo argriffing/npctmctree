@@ -7,6 +7,7 @@ from numpy.testing import assert_equal
 import scipy.stats
 from scipy.misc import logsumexp
 from scipy.special import log1p
+from numpy.linalg import norm
 
 import npctmctree
 from npctmctree.squarem import squarem, counted_calls
@@ -173,18 +174,56 @@ def test_table_2():
             ll += freqs[i] * logsumexp([loga, logb])
         return ll
 
+    def neg_log_likelihood(t):
+        return -log_likelihood(t)
+
+
+    # Initialization used in the R tutorial.
+    # This works for the vanilla fixed-point EM iteration,
+    # requiring 2909 EM evaluations to reach 1e-8 absolute error
+    # between iterations.
+    """
+    > setRNG(list(kind="Wichmann-Hill", normal.kind="Box-Muller", seed=123)
+            + )
+    > c(runif(1), runif(2, 0, 6))
+    [1] 0.4462944 5.3433981 0.8713513
+    """
+    t0 = np.array([0.4462944, 5.3433981, 0.8713513])
+
     #"""
     # the following starting point was causing nans:
     #t0 = np.array([0.68539781, 14.9833716, 74.60634091])
     # from table in slides:
     # mle should be p0=0.3599, mu0=1.256, mu1=2.663
     # the following starting point was used in the paper:
-    t0 = np.array([0.3, 1.0, 2.5])
+    #t0 = np.array([0.3, 1.0, 2.5])
     #t0 = np.array([0.28, 1.06, 2.59])
-    log_likelihood = counted_calls(log_likelihood)
-    result = squarem(t0, em_update, log_likelihood)
+    objective = counted_calls(log_likelihood)
+    counted_em_update = counted_calls(em_update)
+
+    # run the acclerated expectation maximization
+    atol = 1e-8
+    t = t0
+    print('accelerated EM:')
+    result = squarem(t, counted_em_update, objective, atol=atol)
     print(result)
-    print('number of log likelihood calls:', log_likelihood.ncalls)
+    print('number of EM update calls:', counted_em_update.ncalls)
+    print('number of objective function calls:', objective.ncalls)
+    print()
+
+    # run an iterated expectation maximization
+    t = t0
+    print('plain EM:')
+    counted_em_update = counted_calls(em_update)
+    while True:
+        tnext = counted_em_update(t)
+        if norm(tnext - t) < atol:
+            break
+        t = tnext
+    print('number of EM update calls:', counted_em_update.ncalls)
+    print()
+
+
     #"""
 
     """
