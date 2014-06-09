@@ -9,7 +9,7 @@ from scipy.misc import logsumexp
 from scipy.special import log1p
 
 import npctmctree
-from npctmctree.squarem import squarem
+from npctmctree.squarem import squarem, counted_calls
 
 
 class DegenerateMixtureError(Exception):
@@ -174,14 +174,17 @@ def test_table_2():
         return ll
 
     #"""
-    # the following starting point was causing nans
-    t0 = np.array([0.68539781, 14.9833716, 74.60634091])
-    # from table in slides
+    # the following starting point was causing nans:
+    #t0 = np.array([0.68539781, 14.9833716, 74.60634091])
+    # from table in slides:
     # mle should be p0=0.3599, mu0=1.256, mu1=2.663
-    #t0 = np.array([0.3, 1.0, 2.5])
+    # the following starting point was used in the paper:
+    t0 = np.array([0.3, 1.0, 2.5])
     #t0 = np.array([0.28, 1.06, 2.59])
+    log_likelihood = counted_calls(log_likelihood)
     result = squarem(t0, em_update, log_likelihood)
     print(result)
+    print('number of log likelihood calls:', log_likelihood.ncalls)
     #"""
 
     """

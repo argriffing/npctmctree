@@ -38,7 +38,13 @@ class counted_calls(object):
 
 def _compute_step_length(r, v):
     """
-    Implementation of equation (9) in the paper.
+    Compute the step length.
+
+    This is an implementation of equation (9) in the paper
+    Simple and Globally Convergent Methods for Accelerating the Convergence
+    of Any EM Algorithm.
+    Ravi Varadhan and Christophe Roland.
+    Scandinavian Journal of Statistics, Vol. 35: 335--353, 2008.
 
     This is the third of three schemes, labeled S3 in the paper,
     and according to the paper it has the nice properties of being 
