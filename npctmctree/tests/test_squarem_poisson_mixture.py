@@ -113,7 +113,7 @@ def test_table_2():
         #pi = pi_weights / pi_weights.sum(axis=1)[:, None]
         # compute updated parameter values
         p_star = freqs.dot(pi[:, 0]) / freqs.sum()
-        print('em step p_star:', p_star)
+        #print('em step p_star:', p_star)
         mu_star = np.zeros(2, dtype=float)
         for j in range(2):
             numer = sum(deaths[i] * freqs[i] * pi[i, j] for i in range(n))
@@ -197,10 +197,30 @@ def test_table_2():
     #atol = 1e-8
     #t0 = np.array([0.4462944, 5.3433981, 0.8713513])
 
+    # TurboEM tutorial by Jennifer Bobb, page 4.
+    #
+    # squarem
+    # uses the objective function
+    # 23 iterations
+    # 45 em calls
+    # 24 objective function calls
+    # converged
+    #
+    # plain em
+    # strangely, reports objective function evaluations
+    # 1500 iterations
+    # 1500 em calls
+    # 1501 objective function calls
+    # did not converge
+    t0 = np.array([0.5, 1, 3])
+    # For squarem without globalization I see 54 em calls
+    # For squarem with globalization I see 117 em calls
+    # These observed numbers of EM calls are too many...
+
     # from table in slides:
     # mle should be p0=0.3599, mu0=1.256, mu1=2.663
     # the following starting point was used in the paper and slides:
-    t0 = np.array([0.3, 1.0, 2.5])
+    #t0 = np.array([0.3, 1.0, 2.5])
     # in the table in the slides, this starting guess iss associated
     # with the following number of EM function evals (not objective function)
     # for each of the various schemes:
@@ -220,10 +240,20 @@ def test_table_2():
     objective = counted_calls(log_likelihood)
     counted_em_update = counted_calls(em_update)
 
+    """
     # run the acclerated expectation maximization
     atol = 1e-7
     t = t0
-    print('accelerated EM:')
+    print('accelerated EM without merit function:')
+    result = squarem(t, counted_em_update, atol=atol)
+    print(result)
+    print('number of EM update calls:', counted_em_update.ncalls)
+    print()
+
+    # run the acclerated expectation maximization
+    atol = 1e-7
+    t = t0
+    print('accelerated EM with merit function:')
     result = squarem(t, counted_em_update, objective, atol=atol)
     print(result)
     print('number of EM update calls:', counted_em_update.ncalls)
@@ -241,9 +271,7 @@ def test_table_2():
         t = tnext
     print('number of EM update calls:', counted_em_update.ncalls)
     print()
-
-
-    #"""
+    """
 
     """
     t0 = np.array([0.6, 10, 20])
@@ -253,7 +281,7 @@ def test_table_2():
         print(t)
     """
 
-    """
+    #"""
     #a, b = squarem(t0, em_update, L=None, atol=1e-7, em_maxcalls=10000)
     ndegenerate = 0
     for i in range(100):
@@ -272,5 +300,5 @@ def test_table_2():
         except DegenerateMixtureError as e:
             ndegenerate += 1
             print('found', ndegenerate, 'degenerate solutions so far')
-    """
+    #"""
 

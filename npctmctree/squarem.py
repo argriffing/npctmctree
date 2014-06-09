@@ -137,9 +137,8 @@ def squarem(t0, em_update, L=None, atol=1e-7, em_maxcalls=10000, method=None):
         step = partial(_step, t0, r, v)
         a = _compute_step_length(r, v, method)
         print('step length:', a)
-        # for testing, never modify step length
-        #if L is not None:
-            #a = _modify_step_length(a, L, step)
+        if L is not None:
+            a = _modify_step_length(a, L, step)
         t0 = em_update(step(a))
         if em_update.ncalls > em_maxcalls:
             raise Exception('too many em calls: ' + str(em_update.ncalls))
