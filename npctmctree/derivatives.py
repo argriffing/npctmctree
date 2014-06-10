@@ -14,10 +14,47 @@ from scipy.linalg import expm
 from npmctree.cyfels import iid_likelihoods
 
 
+class LikelihoodShapeStorage(object):
+    """
+    Preallocate a bunch of memory here.
+
+    Parameters
+    ----------
+    nsites : int
+        The number of iid observations.
+    nnodes : int
+        The number of nodes in the rooted tree.
+        This is one more than the number of edges.
+    nstates : int
+        The number of states in the stochastic process.
+    degree : integer in (0, 1, 2)
+        The maximum degree of derivatives to compute.
+
+    Notes
+    -----
+    transp_ws : ndarray with shape (nnodes-1, nstates, nstates)
+        Space for a transition probability matrix for each edge of the tree.
+    transp_mod_ws : ndarray with shape (nnodes-1, nstates, nstates)
+        Space for gradient and hessian calculations.
+
+    """
+    def __init__(self, nsites, nnodes, nstates, degree):
+        def _alloc(*args):
+            return np.empty(args, dtype=float)
+        self.likelihoods = _alloc(nsites)
+        self.transp_ws = _alloc(nnodes-1, nstates, nstates)
+        if degree > 0:
+            self.transq = _alloc(nnodes-1, nstates, nstates)
+            self.lhood_gradients = _alloc(nnodes-1, nsites)
+            self.transp_mod_ws = _alloc(nnodes-1, nstates, nstates)
+        if degree > 1:
+            self.lhood_diff_xy = _alloc(nnodes-1, nnodes-1, nsites)
+
+
 def get_log_likelihood_info(
         T, node_to_idx, site_weights, m,
         transq_unscaled, transp_ws, transp_mod_ws,
-        data, root_distn1d, scale,
+        data, root_distn1d, mem, scale,
         degree=0, use_log_scale=False):
     """
     Evaluate log likelihood and derivatives for iid observations.
@@ -35,16 +72,14 @@ def get_log_likelihood_info(
         Kullback-Leibler divergence.
     m : sparse matrix in csr format
         A csr matrix representation of the rooted tree.
-    transq_unscaled : ndarray with shape ()
+    transq_unscaled : ndarray with shape (nnodes-1, nstates, nstates)
         The transition rate matrix for each edge of the tree.
-    transp_ws : ndarray with shape ()
-        Space for a transition probability matrix for each edge of the tree.
-    transp_mod_ws : ndarray with shape ()
-        Space for gradient and hessian calculations.
-    data : ndarray with shape ()
+    data : ndarray with shape (nsites, nnodes, nstates)
         Observation data.
     root_distn1d : 1d ndarray
         Prior distribution of states at the root of the tree.
+    mem : LikelihoodShapeStorage object
+        An object with preallocated arrays.
     scale : 1d ndarray
         Scaling factors or logs of scaling factors
         to be applied to the transition rate matrices.
@@ -85,23 +120,25 @@ def get_log_likelihood_info(
     n = nstates
 
     # Scale the rate matrices according to the edge ratios.
-    transq = transq_unscaled * scale[:, None, None]
+    # Use in-place operations to avoid unnecessary memory copies.
+    #transq = transq_unscaled * scale[:, None, None]
+    mem.transq[...] = transq_unscaled
+    mem.transq *= scale[:, None, None]
 
     # Compute the probability transition matrix arrays.
     for edge in T.edges():
         na, nb = edge
         eidx = node_to_idx[nb] - 1
-        Q = transq[eidx]
-        transp_ws[eidx] = expm(Q)
+        Q = mem.transq[eidx]
+        mem.transp_ws[eidx] = expm(Q)
 
     # Compute the site likelihoods.
-    likelihoods = np.empty(nsites, dtype=float)
     iid_likelihoods(
             m.indices, m.indptr,
-            transp_ws,
+            mem.transp_ws,
             data,
             root_distn1d,
-            likelihoods,
+            mem.likelihoods,
             validation,
             )
 
@@ -115,24 +152,25 @@ def get_log_likelihood_info(
 
     # To compute the gradient,
     # for each edge adjust the transition probability matrix.
-    lhood_gradients = np.empty((nnodes-1, nsites), dtype=float)
     for edge in T.edges():
         na, nb = edge
         eidx = node_to_idx[nb] - 1
-        transp_mod_ws[...] = transp_ws
-        transp_mod_ws[eidx] = np.dot(transq_unscaled[eidx], transp_ws[eidx])
+        mem.transp_mod_ws[...] = mem.transp_ws
+        mem.transp_mod_ws[eidx] = np.dot(
+                mem.transq_unscaled[eidx], mem.transp_ws[eidx])
         iid_likelihoods(
                 m.indices, m.indptr,
-                transp_mod_ws,
+                mem.transp_mod_ws,
                 data,
                 root_distn1d,
-                lhood_gradients[eidx],
+                mem.lhood_gradients[eidx],
                 validation,
                 )
 
     # Compute the log likelihood gradient.
     # Adjust for log scale if necessary.
-    ll_gradient = np.dot(lhood_gradients / likelihoods[None, :], site_weights)
+    ll_gradient = np.dot(
+            mem.lhood_gradients / mem.likelihoods[None, :], site_weights)
     if use_log_scale:
         ll_gradient = ll_gradient * scale
 
@@ -142,7 +180,7 @@ def get_log_likelihood_info(
 
     # To compute the hessian,
     # for each edge pair adjust the transition probability matrix.
-    lhood_diff_xy = np.ones((nnodes-1, nnodes-1, nsites), dtype=float) * 666
+    mem.lhood_diff_xy[...] = 1
     edges = list(T.edges())
     for edge0 in edges:
         na0, nb0 = edge0
@@ -154,40 +192,31 @@ def get_log_likelihood_info(
             Q1 = transq_unscaled[eidx1]
 
             # Compute the hessian.
-            transp_mod_ws[...] = transp_ws
-            transp_mod_ws[eidx0, :, :] = np.dot(Q0, transp_mod_ws[eidx0])
-            transp_mod_ws[eidx1, :, :] = np.dot(Q1, transp_mod_ws[eidx1])
+            mem.transp_mod_ws[...] = mem.transp_ws
+            mem.transp_mod_ws[eidx0, :, :] = np.dot(
+                    Q0, mem.transp_mod_ws[eidx0])
+            mem.transp_mod_ws[eidx1, :, :] = np.dot(
+                    Q1, mem.transp_mod_ws[eidx1])
             iid_likelihoods(
                     m.indices, m.indptr,
-                    transp_mod_ws,
+                    mem.transp_mod_ws,
                     data,
                     root_distn1d,
-                    lhood_diff_xy[eidx0, eidx1, :],
+                    mem.lhood_diff_xy[eidx0, eidx1, :],
                     validation,
                     )
 
-    #print('lhood diff xy:')
-    #print(lhood_diff_xy)
-
-    # Compute the hessian.
+    # Compute the ingredients of the hessian.
+    # TODO Should this be computed within cython?
 
     # l_xy / l
-    a = lhood_diff_xy / likelihoods[None, None, :]
-    #print('a shape:', a.shape)
+    a = mem.lhood_diff_xy / mem.likelihoods[None, None, :]
 
     # l_x * l_y (vectorized outer product)
-    b = np.einsum('i...,j...->ij...', lhood_gradients, lhood_gradients)
-    #print('b shape:', b.shape)
+    b = np.einsum('i...,j...->ij...', mem.lhood_gradients, mem.lhood_gradients)
 
     # l * l
-    c = (likelihoods * likelihoods)[None, None, :]
-    #print('c shape:', c.shape)
-
-    #print('hessian parts:')
-    #print(a)
-    #print(b)
-    #print(c)
-    #print()
+    c = (mem.likelihoods * mem.likelihoods)[None, None, :]
 
     # Compute the hessian.
     # Adjust for log scale if necessary.
