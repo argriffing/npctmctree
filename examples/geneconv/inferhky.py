@@ -17,11 +17,7 @@ from npmctree.dynamic_lmap_lhood import get_iid_lhoods
 import npctmctree
 from npctmctree.optimize import estimate_edge_rates
 
-from model import get_distn_brute
-
-
-def hamming_distance(a, b):
-    return sum(1 for x, y in zip(a, b) if x != y)
+from model import get_distn_brute, get_combined_pre_Q
 
 
 def get_tree_info():
@@ -43,6 +39,26 @@ def get_tree_info():
     return T, root, edge_to_blen
 
 
+def get_hky_pre_Q(kappa, nt_probs):
+    """
+    This is just hky.
+
+    """
+    n = 4
+    transitions = ((0, 3), (3, 0), (1, 2), (2, 1))
+    pre_Q = np.zeros((n, n), dtype=float)
+    for sa, pa in enumerate(nt_probs):
+        for sb, pb in enumerate(nt_probs):
+            if sa == sb:
+                continue
+            rate = 1.0
+            rate *= pb
+            if (sa, sb) in transitions:
+                rate *= kappa
+            pre_Q[sa, sb] = rate
+    return pre_Q
+
+
 def ad_hoc_fasta_reader(fin):
     name_seq_pairs = []
     while True:
@@ -62,65 +78,6 @@ def ad_hoc_fasta_reader(fin):
             raise Exception('unrecognized nucleotides: ' + str(unrecognized))
 
         name_seq_pairs.append((name, seq))
-
-
-def get_combined_pre_Q(pre_Q, tau):
-    """
-    This is for gene conversion.
-
-    Parameters
-    ----------
-    pre_Q : 2d ndarray
-        unnormalized pre-rate-matrix
-    tau : float
-        non-negative additive gene conversion rate parameter
-
-    """
-    n = pre_Q.shape[0]
-    assert_equal(pre_Q.shape, (n, n))
-    pre_R = np.zeros((n*n, n*n), dtype=float)
-    nt_pairs = list(itertools.product(range(n), repeat=2))
-    for i, sa in enumerate(nt_pairs):
-        for j, sb in enumerate(nt_pairs):
-            if hamming_distance(sa, sb) != 1:
-                continue
-            sa0, sa1 = sa
-            sb0, sb1 = sb
-            rate = 0
-            if sa0 != sb0:
-                # rate contribution of point mutation from sa0
-                rate += pre_Q[sa0, sb0]
-                if sa1 == sb0:
-                    # rate contribution of gene conversion from sa1
-                    rate += tau
-            if sa1 != sb1:
-                # rate contribution of point mutation from sa1
-                rate += pre_Q[sa1, sb1]
-                if sa0 == sb1:
-                    # rate contribution of gene conversion from sa0
-                    rate += tau
-            pre_R[i, j] = rate
-    return pre_R
-
-
-def get_hky_pre_Q(kappa, nt_probs):
-    """
-    This is just hky.
-
-    """
-    n = 4
-    transitions = ((0, 3), (3, 0), (1, 2), (2, 1))
-    pre_Q = np.zeros((n, n), dtype=float)
-    for sa, pa in enumerate(nt_probs):
-        for sb, pb in enumerate(nt_probs):
-            if sa == sb:
-                continue
-            rate = 1.0
-            rate *= pb
-            if (sa, sb) in transitions:
-                rate *= kappa
-            pre_Q[sa, sb] = rate
-    return pre_Q
 
 
 def get_log_likelihood(T, root, data, edges,
