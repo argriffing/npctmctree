@@ -20,6 +20,7 @@ def get_log_likelihood_info(
         data, root_distn1d, scale,
         degree=0, use_log_scale=False):
     """
+    Evaluate log likelihood and derivatives for iid observations.
 
     Parameters
     ----------
