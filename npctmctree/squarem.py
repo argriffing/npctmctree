@@ -1,43 +1,12 @@
 """
-This will be coded according to the published literature.
+An accelerated fixed-point solver designed for smooth contraction mappings.
 
-The R code by the original SQUAREM authors is not BSD-compatible
-so to minimize licensing issues this Python code will be implemented
-according to descriptions in the literature.
+The most straightforward application of this solver is to accelerate
+the convergence of expectation-maximization algorithms for maximum likelihood
+estimation of parameters of statistical models.
 
-"""
-from __future__ import division, print_function, absolute_import
+Step length notes:
 
-#TODO move this into scipy eventually
-
-from functools import partial
-
-import numpy as np
-from numpy.testing import assert_equal
-from numpy.linalg import norm
-
-
-
-def poisson_mix_log_likelihood(counts, weights, mix, mu):
-    # counts : a data vector of observed counts
-    # weights : the number of times each count was observed
-    # mix : finite distribution over mixture components
-    # mu : means of poisson mixture components
-    assert_equal(counts.shape, weights.shape)
-    assert_equal(mix.shape, mu.shape)
-
-
-class counted_calls(object):
-    def __init__(self, f):
-        self._f = f
-        self.ncalls = 0
-    def __call__(self, *args, **kwargs):
-        self.ncalls += 1
-        return self._f(*args, **kwargs)
-
-
-def _compute_step_length(r, v, method=None):
-    """
     Compute the step length.
 
     This is an implementation of equation (9) in the paper
@@ -51,97 +20,143 @@ def _compute_step_length(r, v, method=None):
     always negative and bounded, and it is a lower bound for the
     step length defined by scheme S1 when dot(r, v) < 0.
 
+"""
+from __future__ import division, print_function, absolute_import
+
+import functools
+
+import numpy as np
+
+from scipy.optimize import OptimizeResult
+
+
+class _ConvergenceError(Exception):
+    pass
+
+
+class _counted_calls(object):
     """
-    if method is None:
-        method = 'SqS3'
-    if method == 'SqS1':
-        return np.dot(r, v) / np.dot(v, v)
-    elif method == 'SqS2':
-        return np.dot(r, r) / np.dot(r, v)
-    elif method == 'SqS3':
-        return -norm(r) / norm(v)
-    else:
-        raise Exception('unknown method')
+    Tracks the number of calls.
 
-
-def _modify_step_length(a, L, step):
-    """
-    The point is to preserve monotonicity.
-
-    Parameters
-    ----------
-    a : float
-        Proposed step length.
-    L : function
-        Lyapunov function expensively mapping parameter
-        values to the merit function value.
-    step : function
-        Cheaply maps step length to parameter values.
+    Raises an error if the max number of calls is exceeded.
 
     """
-    if a >= 0:
-        raise Exception('non-negative step length ' + str(a))
-    if a > -1:
-        return a
+    def __init__(self, f, maxfun=None):
+        self.f = f
+        self.ncalls = 0
+        self.maxfun = maxfun
+    def __call__(self, *args, **kwargs):
+        self.ncalls += 1
+        if self.maxfun is not None and self.ncalls > self.maxfun:
+            msg = 'exceeded %d function calls' % self.maxfun
+            raise _ConvergenceError(msg)
+        return self.f(*args, **kwargs)
+
+
+def _step(x, r, v, alpha):
+    return x - 2*alpha*r + alpha*alpha*v
+
+
+def _modify_step_length(alpha, L, backtrack_rate, step):
+    """
+    Note that when alpha = -1 this corresponds to a pure x=func(x) step.
+    Because of the Lyapunov theory, step lengths between 0 and -1 are stable.
+    The step length modfication brings more extreme step lengths towards -1.
+
+    """
+    if alpha >= 0:
+        raise _ConvergenceError('non-negative step length %f' % alpha)
+    if alpha > -1:
+        return alpha
     L0 = L(step(0))
-    Ln = L(step(a))
-    # remove me
-    Lneg1 = L(step(-1))
-    if Lneg1 < L0:
-        print('step length:', a)
-        print(Lneg1, '<', L0)
-        raise Exception('possibly ascent property of EM is violated')
-    # remove me
-    while Ln < L0:
-        print('need to adjust the step size because', Ln, '<', L0)
-        a = (a - 1) / 2
-        Ln = L(step(a))
-    return a
+    Ln = L(step(alpha))
+    while Ln > L0:
+        if backtrack_rate == 1:
+            return -1
+        alpha = (1-backtrack_rate)*alpha + backtrack_rate*(-1)
+        Ln = L(step(alpha))
+    return alpha
 
 
-def _step(t, r, v, a):
-    return t - 2*a*r + a*a*v
-
-
-def _check_for_convergence(ta, tb, atol):
+def fixed_point_squarem(func, x0, args=(), L=None, backtrack_rate=0.1,
+        atol=1e-8, maxiter=500, maxfun=None):
     """
-    Equation (23) in section 7 of the paper.
+    Not globalized.
 
-    """
-    return norm(tb - ta) < atol
-
-
-def squarem(t0, em_update, L=None, atol=1e-7, em_maxcalls=10000, method=None):
-    """
-    Implementation of pseudocode from Table 1 in the paper.
+    Parameter list inspired by scipy.optimize.fixed_point.
 
     Parameters
     ----------
-    t0 : ndarray
-        Initial guess of parameter values.
-    em_update : function
-        Updates parameter vector according to EM.
+    func : function
+        Function to evaluate.
+    x0 : scalar or array_like
+        Initial guess of fixed point of function.
+    args : tuple
+        Extra arguments to `func`.
     L : function, optional
-        The function to maximize.  If available, this function is required to
-        have nice 'Lyapunov function' properties.  An observed data log
-        likelihood function will have these properties.
+        Underlying Lyapunov function to minimize.
+    backtrack_rate : float, optional
+        A tuning parameter between 0 and 1.
+        This is not used if L is not provided.
+    atol : float, optional
+        Tolerance of norm of difference between values of successive iterations.
+    maxiter : int, optional
+        Maximum number of iterations.
+    maxfun : int, optional
+        Maximum number of function calls.
+
+    Returns
+    -------
+    result : OptimizeResult object
+        Highlights include result.x, result.success, and result.message.
 
     """
-    em_update = counted_calls(em_update)
-    converged = False
-    while not converged:
-        t1 = em_update(t0)
-        t2 = em_update(t1)
-        r = t1 - t0
-        v = (t2 - t1) - r  # t2 - 2 t1 + t0
-        step = partial(_step, t0, r, v)
-        a = _compute_step_length(r, v, method)
-        print('step length:', a)
-        if L is not None:
-            a = _modify_step_length(a, L, step)
-        t0 = em_update(step(a))
-        if em_update.ncalls > em_maxcalls:
-            raise Exception('too many em calls: ' + str(em_update.ncalls))
-        converged = _check_for_convergence(step(a), t0, atol)
-    return converged, t0
+    if not (0 <= backtrack_rate <= 1):
+        raise ValueError('backtrack rate should be between 0 and 1')
+    if np.isscalar(x0):
+        norm = np.absolute
+    if not np.isscalar(x0):
+        x0 = np.asarray(x0)
+        norm = np.linalg.norm
+    func = _counted_calls(func, maxfun)
+    xn = x0
+    try:
+        completed_iterations = 0
+        while True:
+            x1 = func(x0, *args)
+            x2 = func(x1, *args)
+            r = x1 - x0
+            v = x2 - 2*x1 + x0
+            r_norm = norm(r)
+            v_norm = norm(v)
+            if not np.isfinite(r_norm) and not np.isfinite(v_norm):
+                msg = 'failed to compute step size: neither norm is finite'
+                raise _ConvergenceError(msg)
+            if not v_norm:
+                msg = 'failed to compute step size: v_norm is zero'
+                raise _ConvergenceError(msg)
+            a_raw = -r_norm / v_norm
+            step = functools.partial(_step, x0, r, v)
+            if L is not None:
+                a = _modify_step_length(a_raw, L, backtrack_rate, step)
+            if a == -1:
+                # The step length acceleration has given up
+                # so we use the unaccelerated stable step.
+                xp = x1
+                xn = x2
+            else:
+                xp = step(a)
+                xn = func(xp, *args)
+            #print('original and modified step lengths:', a_raw, a)
+            completed_iterations += 1
+            if norm(xn - xp) < atol:
+                return OptimizeResult(x=xn, success=True, status=0,
+                        message='Success', nfev=func.ncalls,
+                        nit=completed_iterations)
+            if maxiter is not None and completed_iterations >= maxiter:
+                raise _ConvergenceError('exceeded %d iterations' % maxiter)
+            x0 = xn
+    except _ConvergenceError as e:
+        return OptimizeResult(x=xn, success=False, status=1,
+                message=str(e), nfev=func.ncalls, nit=completed_iterations)
 
