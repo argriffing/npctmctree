@@ -2,6 +2,7 @@
 """
 from __future__ import division, print_function, absolute_import
 
+import argparse
 import functools
 import itertools
 
@@ -154,13 +155,13 @@ def objective(T, root, data, edges, log_params):
     return -ll + nt_penalty
 
 
-def main():
+def main(args):
 
     # Read the hardcoded tree information.
     T, root, edge_to_blen = get_tree_info()
 
     # Read the data as name sequence pairs.
-    with open('simdata.fasta') as fin:
+    with open(args.fasta) as fin:
         name_seq_pairs = ad_hoc_fasta_reader(fin)
     name_to_seq = dict(name_seq_pairs)
 
@@ -250,5 +251,8 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--fasta', required=True,
+            help='fasta file with paralog alignment of EDN and ECP')
+    main(parser.parse_args())
 
