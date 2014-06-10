@@ -6,8 +6,12 @@ Required dependencies:
  * [git](http://git-scm.com/) (installation)
  * [numpy](http://www.numpy.org/)
  * [scipy](http://docs.scipy.org/doc/)
+ * [Cython](http://cython.org) (manually write unsafe fast code for Python)
+   - `$ pip install --user git+https://github.com/cython/cython`
  * [NetworkX](http://networkx.lanl.gov/) (graph data types and algorithms)
    - `$ pip install --user git+https://github.com/networkx/networkx`
+ * [npmctree](https://github.com/argriffing/npmctree) (markov chain on trees)
+   - `$ pip install --user git+https://github.com/argriffing/npmctree`
 
 Optional dependencies:
  * [nose](https://nose.readthedocs.org/) (testing)
