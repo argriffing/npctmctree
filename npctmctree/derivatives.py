@@ -106,8 +106,8 @@ def get_log_likelihood_info(
         log_rates = scale
         scale = np.exp(log_rates)
 
-    # Request input validation for Cythonized functions.
-    validation = 1
+    # Optionally request input validation for Cythonized functions.
+    validation = 0
 
     # Check the requested degree.
     allowed_degrees = (0, 1, 2)
