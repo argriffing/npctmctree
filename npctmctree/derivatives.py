@@ -20,8 +20,45 @@ def get_log_likelihood_info(
         data, root_distn1d, scale,
         degree=0, use_log_scale=False):
     """
+
+    Parameters
+    ----------
+    T : networkx DiGraph
+        rooted tree
+    node_to_idx : dict
+        map from networkx node to toposort order index
+    site_weights : 1d ndarray
+        The weight for each observation.
+        For example, this could be the number of repeats of each observation,
+        or it could be a site probability for the application of computing
+        Kullback-Leibler divergence.
+    m : sparse matrix in csr format
+        A csr matrix representation of the rooted tree.
+    transq_unscaled : ndarray with shape ()
+        The transition rate matrix for each edge of the tree.
+    transp_ws : ndarray with shape ()
+        Space for a transition probability matrix for each edge of the tree.
+    transp_mod_ws : ndarray with shape ()
+        Space for gradient and hessian calculations.
+    data : ndarray with shape ()
+        Observation data.
+    root_distn1d : 1d ndarray
+        Prior distribution of states at the root of the tree.
+    scale : 1d ndarray
+        Scaling factors or logs of scaling factors
+        to be applied to the transition rate matrices.
+    degree : integer in {0, 1, 2}, optional
+        Max degree of computed derivatives.
+        If degree is 0 then report only the log likelihood.
+        If degree is 1 then also report the 1d ndarray of first derivatives.
+        If degree is 2 then also report the 2d ndarray of second derivatives.
+    use_log_scale : bool, optional
+        If True then the scale input parameters will be interpreted
+        as logs of scaling factors, and the reported first and second
+        derivatives will be with respect to logs of scaling factors.
+        
     """
-    #TODO add docstring and unit tests!
+    #TODO add unit tests
 
     # If we are using log scale then the scale parameter
     # is a vector of logarithms of edge-specific rate scaling factors.
