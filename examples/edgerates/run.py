@@ -24,7 +24,9 @@ from npctmctree.cyem import expectation_step
 
 import npctmctree
 from npctmctree.linesearch import jj97_qn2
-from npctmctree.derivatives import get_log_likelihood_info
+from npctmctree.derivatives import (
+        LikelihoodShapeStorage, get_log_likelihood_info)
+from npctmctree.em import EMStorage, em_function
 
 
 def get_tree_info():
@@ -68,18 +70,19 @@ def get_em_displacement(*args):
 
 def get_logscale_fgh(
         T, node_to_idx, site_weights, m,
-        transq_unscaled, transp_ws, transp_mod_ws,
+        transq_unscaled,
         data,
         root_distn1d,
+        mem,
+        degree,
         log_scale,
         ):
     # return includes hessian and can deal with log scale rates
-    f, g, h = get_log_likelihood_info(
+    return get_log_likelihood_info(
             T, node_to_idx, site_weights, m,
-            transq_unscaled, transp_ws, transp_mod_ws,
-            data, root_distn1d, log_scale,
-            degree=2, use_log_scale=True)
-    return f, g, h
+            transq_unscaled,
+            data, root_distn1d, mem, log_scale,
+            degree=degree, use_log_scale=True)
 
 
 def objective_and_gradient_for_search(
@@ -222,6 +225,18 @@ def do_jj97_qn2_search(T, root,
     print(out)
 
 
+def do_a_few_EM_iterations(f, x0, niter, verbose=True):
+    # Do a few EM rounds.
+    if verbose:
+        print('doing a few EM rounds...')
+        print(x0)
+    x = x0
+    for i in range(niter):
+        x = f(x)
+        print(x)
+    return x
+
+
 def do_hessian_search(T, root,
         edge_to_rate, edge_to_Q, root_distn1d,
         data_prob_pairs, guess_edge_to_rate):
@@ -263,49 +278,70 @@ def do_hessian_search(T, root,
         scaling_guesses[eidx] = np.log(rate)
 
     # Initialize temporary arrays for EM.
-    interact_trans = np.empty_like(transq)
-    interact_dwell = np.empty_like(transq)
-    trans_out = np.empty((nsites, nnodes-1), dtype=float)
-    dwell_out = np.empty((nsites, nnodes-1), dtype=float)
-
-    # Initialize EM function.
-    em = partial(get_em_displacement,
+    # Initialize the em step function for our tree structure, data,
+    # and unscaled rate matrices.
+    em_mem = EMStorage(nsites, nnodes, nstates)
+    use_log_scale = True
+    # This partial function will take log scaling factors per edge
+    # and return better log scaling factors per edge.
+    em = partial(em_function,
             T, node_to_idx, site_weights, m,
-            transq, transp,
-            interact_trans, interact_dwell,
+            transq,
             data,
             root_distn1d,
-            trans_out, dwell_out)
+            em_mem,
+            use_log_scale,
+            )
+
+    # Define the initial point in the search.
+    x0 = scaling_guesses
+    print('initial guesses:')
+    print(x0)
+    print(np.exp(x0))
 
     # Do a few EM rounds.
-    print('doing a few EM rounds...')
-    x0 = np.exp(scaling_guesses)
+    # This is a separate function instead of a loop so that
+    # the time can be seen for in the profiler.
+    niter = 50
+    x0 = do_a_few_EM_iterations(em, x0, niter)
+
+    print('guesses after', niter, 'EM steps:')
     print(x0)
-    for i in range(30):
-        x0 += em(x0)
-        print(x0)
-    scaling_guesses = np.log(x0)
+    print(np.exp(x0))
+
+    # Initialize memory for log likelihood shape calculation.
+    degree = 2
+    ll_shape_mem = LikelihoodShapeStorage(nsites, nnodes, nstates, degree)
 
     fgh = partial(get_logscale_fgh,
             T, node_to_idx, site_weights, m,
-            transq, transp, transp_grad,
+            transq,
             data,
             root_distn1d,
+            ll_shape_mem,
             )
     def f(X):
-        fx, gx, hx = fgh(X)
+        degree = 0
+        fx = fgh(degree, X)
         return -fx
     def g(X):
-        fx, gx, hx = fgh(X)
+        degree = 1
+        fx, gx = fgh(degree, X)
         return -gx
     def h(X):
-        fx, gx, hx = fgh(X)
+        degree = 2
+        fx, gx, hx = fgh(degree, X)
         return -hx
 
-    x0 = scaling_guesses
+    print('guesses before hessian-guided search:')
+    print(x0)
+    print(np.exp(x0))
+
     result = scipy.optimize.minimize(f, x0, jac=g, hess=h, tol=1e-8,
             method='trust-ncg')
             #method='dogleg')
+
+    print('result of hessian-guided search:')
     print(result)
     print(np.exp(result.x))
 
