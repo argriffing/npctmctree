@@ -16,6 +16,7 @@ from npmctree.dynamic_lmap_lhood import get_iid_lhoods, get_lhood
 
 import npctmctree
 from npctmctree.cyem import expectation_step
+from npctmctree.optimize import estimate_edge_rates
 
 from model import get_distn_brute
 
@@ -415,6 +416,14 @@ def main():
     do_cythonized_em(T, root,
             edge_to_Q, root_distn,
             data_prob_pairs, guess_edge_to_rate)
+
+    # Use the optimizer.
+    print('updating edge rates with the sophisticated search...')
+    edge_to_rate, neg_ll = estimate_edge_rates(
+            T, root, edge_to_Q, root_distn, data_prob_pairs)
+    print('estimated edge rates:', edge_to_rate)
+    print('corresponding neg log likelihood:', neg_ll)
+    print()
 
 
 if __name__ == '__main__':
