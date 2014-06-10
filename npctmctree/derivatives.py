@@ -43,8 +43,8 @@ class LikelihoodShapeStorage(object):
             return np.empty(args, dtype=float)
         self.likelihoods = _alloc(nsites)
         self.transp_ws = _alloc(nnodes-1, nstates, nstates)
+        self.transq = _alloc(nnodes-1, nstates, nstates)
         if degree > 0:
-            self.transq = _alloc(nnodes-1, nstates, nstates)
             self.lhood_gradients = _alloc(nnodes-1, nsites)
             self.transp_mod_ws = _alloc(nnodes-1, nstates, nstates)
         if degree > 1:
@@ -53,8 +53,7 @@ class LikelihoodShapeStorage(object):
 
 def get_log_likelihood_info(
         T, node_to_idx, site_weights, m,
-        transq_unscaled, transp_ws, transp_mod_ws,
-        data, root_distn1d, mem, scale,
+        transq_unscaled, data, root_distn1d, mem, scale,
         degree=0, use_log_scale=False):
     """
     Evaluate log likelihood and derivatives for iid observations.
@@ -144,7 +143,7 @@ def get_log_likelihood_info(
 
     # Compute the sum of log likelihoods.
     # This is the negative of the objective function.
-    ll_total = np.log(likelihoods).dot(site_weights)
+    ll_total = np.log(mem.likelihoods).dot(site_weights)
 
     # If the degree is limited to zero then we are done.
     if degree == 0:
@@ -157,7 +156,7 @@ def get_log_likelihood_info(
         eidx = node_to_idx[nb] - 1
         mem.transp_mod_ws[...] = mem.transp_ws
         mem.transp_mod_ws[eidx] = np.dot(
-                mem.transq_unscaled[eidx], mem.transp_ws[eidx])
+                transq_unscaled[eidx], mem.transp_ws[eidx])
         iid_likelihoods(
                 m.indices, m.indptr,
                 mem.transp_mod_ws,

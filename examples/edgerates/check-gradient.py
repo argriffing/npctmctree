@@ -19,7 +19,8 @@ from npmctree.dynamic_fset_lhood import get_lhood, get_edge_to_distn2d
 
 import npctmctree
 from npctmctree.cyem import expectation_step
-from npctmctree.derivatives import get_log_likelihood_info
+from npctmctree.derivatives import (
+        LikelihoodShapeStorage, get_log_likelihood_info)
 
 
 def get_tree_info():
@@ -176,11 +177,12 @@ def help_get_iid_info(T, root, root_distn1d, edge_to_Q,
         eidx = node_to_idx[nb] - 1
         scaling_guesses[eidx] = rate
 
-    #
+    # preallocate some memory
+    # compute iid log likelihood and derivatives
+    mem = LikelihoodShapeStorage(nsites, nnodes, nstates, degree)
     return get_log_likelihood_info(
             T, node_to_idx, site_weights, m,
-            transq, transp_ws, transp_mod_ws,
-            data, root_distn1d, scaling_guesses,
+            transq, data, root_distn1d, mem, scaling_guesses,
             degree=degree, use_log_scale=use_log_scale)
 
 
