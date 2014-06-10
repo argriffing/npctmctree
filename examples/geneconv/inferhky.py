@@ -8,11 +8,11 @@ import itertools
 import numpy as np
 import networkx as nx
 from numpy.testing import assert_equal
-from scipy.linalg import expm, expm_frechet
+from scipy.linalg import expm
 import scipy.optimize
 
 import npmctree
-from npmctree.dynamic_lmap_lhood import get_iid_lhoods, get_lhood
+from npmctree.dynamic_lmap_lhood import get_iid_lhoods
 
 import npctmctree
 from npctmctree.optimize import estimate_edge_rates
@@ -22,15 +22,6 @@ from model import get_distn_brute
 
 def hamming_distance(a, b):
     return sum(1 for x, y in zip(a, b) if x != y)
-
-
-def get_state_space():
-    nt_pairs = []
-    pair_to_state = {}
-    for i, pair in enumerate(list(product('ACGT', repeat=2))):
-        nt_pairs.append(pair)
-        pair_to_state[pair] = i
-    return nt_pairs, pair_to_state
 
 
 def get_tree_info():
@@ -156,16 +147,10 @@ def get_log_likelihood(T, root, data, edges,
     for edge_index, edge_rate in enumerate(edge_rates):
         edge = edges[edge_index]
         P = expm(edge_rate * R)
-        #print('row sums of P:')
-        #print(P).sum(axis=1)
         edge_to_P[edge] = P
 
     # Get the likelihood at each site.
     lhoods = get_iid_lhoods(T, edge_to_P, root, root_distn, data)
-    #lhoods = []
-    #for d in data:
-        #lhood = get_lhood(T, edge_to_P, root, root_distn, d)
-        #lhoods.append(lhood)
 
     # Return the log likelihood.
     """
