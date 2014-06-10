@@ -182,8 +182,8 @@ def help_get_iid_info(T, root, root_distn1d, edge_to_Q,
     mem = LikelihoodShapeStorage(nsites, nnodes, nstates, degree)
     return get_log_likelihood_info(
             T, node_to_idx, site_weights, m,
-            transq, data, root_distn1d, mem, scaling_guesses,
-            degree=degree, use_log_scale=use_log_scale)
+            transq, data, root_distn1d, mem, use_log_scale,
+            degree, scaling_guesses)
 
 
 def check_iid_info(T, root, root_distn1d, edge_to_Q,
