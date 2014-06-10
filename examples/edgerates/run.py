@@ -28,6 +28,7 @@ from npctmctree.derivatives import (
         LikelihoodShapeStorage, get_log_likelihood_info)
 from npctmctree.em import EMStorage, em_function
 from npctmctree.squarem import fixed_point_squarem
+from npctmctree.optimize import estimate_edge_rates
 
 
 def get_tree_info():
@@ -869,11 +870,15 @@ def main():
     #f = do_cythonized_accelerated_em
     #f = do_gradient_search
     #f = do_jj97_qn2_search
-    f = do_hessian_search
+    #f = do_hessian_search
 
-    print('starting search...')
-    f(T, root, edge_to_rate, edge_to_Q, root_distn1d,
-            data_prob_pairs, guess_edge_to_rate)
+    print('searching...')
+    edge_to_rate, neg_ll = estimate_edge_rates(
+            T, root, edge_to_Q, root_distn1d, data_prob_pairs)
+    print('edge to rate:')
+    print(edge_to_rate)
+    print('negative log likelihood of estimate:', neg_ll)
+
 
     #def get_ll_gradient(*args):
     #def get_em_displacement(*args):

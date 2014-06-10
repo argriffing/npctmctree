@@ -53,10 +53,13 @@ class LikelihoodShapeStorage(object):
 
 def get_log_likelihood_info(
         T, node_to_idx, site_weights, m,
-        transq_unscaled, data, root_distn1d, mem, scale,
-        degree=0, use_log_scale=False):
+        transq_unscaled, data, root_distn1d, mem, use_log_scale,
+        degree, scale):
     """
     Evaluate log likelihood and derivatives for iid observations.
+
+    Note that the scale is deliberately the final argument
+    so that it can be easily used with functools.partial.
 
     Parameters
     ----------
@@ -79,18 +82,18 @@ def get_log_likelihood_info(
         Prior distribution of states at the root of the tree.
     mem : LikelihoodShapeStorage object
         An object with preallocated arrays.
-    scale : 1d ndarray
-        Scaling factors or logs of scaling factors
-        to be applied to the transition rate matrices.
-    degree : integer in {0, 1, 2}, optional
+    use_log_scale : bool
+        If True then the scale input parameters will be interpreted
+        as logs of scaling factors, and the reported first and second
+        derivatives will be with respect to logs of scaling factors.
+    degree : integer in {0, 1, 2}
         Max degree of computed derivatives.
         If degree is 0 then report only the log likelihood.
         If degree is 1 then also report the 1d ndarray of first derivatives.
         If degree is 2 then also report the 2d ndarray of second derivatives.
-    use_log_scale : bool, optional
-        If True then the scale input parameters will be interpreted
-        as logs of scaling factors, and the reported first and second
-        derivatives will be with respect to logs of scaling factors.
+    scale : 1d ndarray
+        Scaling factors or logs of scaling factors
+        to be applied to the transition rate matrices.
         
     """
     #TODO add unit tests
