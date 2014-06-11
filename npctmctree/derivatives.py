@@ -51,6 +51,11 @@ class LikelihoodShapeStorage(object):
             self.lhood_diff_xy = _alloc(nnodes-1, nnodes-1, nsites)
 
 
+def wrapped_iid_likelihoods(*args):
+    # the cython function is wrapped for profiling
+    iid_likelihoods(*args)
+
+
 def get_log_likelihood_info(
         T, node_to_idx, site_weights, m,
         transq_unscaled, data, root_distn1d, mem, use_log_scale,
@@ -199,7 +204,7 @@ def get_log_likelihood_info(
                     Q0, mem.transp_mod_ws[eidx0])
             mem.transp_mod_ws[eidx1, :, :] = np.dot(
                     Q1, mem.transp_mod_ws[eidx1])
-            iid_likelihoods(
+            wrapped_iid_likelihoods(
                     m.indices, m.indptr,
                     mem.transp_mod_ws,
                     data,
