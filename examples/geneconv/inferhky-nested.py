@@ -298,7 +298,8 @@ def main(args):
     # for the gene conversion stochastic process.
     suffixes = ('EDN', 'ECP')
     taxa = ('Gorilla', 'Macaque', 'Chimpanzee', 'Orangutan')
-    nsites = len(name_seq_pairs[0][0])
+    nsites = len(name_seq_pairs[0][1])
+    print('number of sites:', nsites)
     constraints = []
     for site in range(nsites):
         node_to_lmap = {}
@@ -315,9 +316,9 @@ def main(args):
             node_to_lmap[node] = lmap
         constraints.append(node_to_lmap)
 
-    # FIXME actually let's ignore that and do something completely different
-    constraints = None
-    data_weight_pairs = get_exact_data()
+    # NOTE use exact data vs. use the data on the command line
+    #data_weight_pairs = get_exact_data()
+    data_weight_pairs = [(c, 1.0) for c in constraints]
 
     # Make some initial parameter value guesses.
     #kappa = 2.0
