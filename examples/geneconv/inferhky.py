@@ -18,9 +18,17 @@ from npmctree.dynamic_lmap_lhood import get_iid_lhoods
 import npctmctree
 from npctmctree.optimize import estimate_edge_rates
 
-from model import get_distn_brute, get_combined_pre_Q
+from util import ad_hoc_fasta_reader
+from model import (
+        get_distn_brute,
+        get_tree_info_with_outgroup,
+        get_hky_pre_Q,
+        get_combined_pre_Q,
+        get_lockstep_pre_Q,
+        )
 
 
+# TODO out of date
 def get_tree_info():
     T = nx.DiGraph()
     common_blen = 1.0
@@ -40,71 +48,55 @@ def get_tree_info():
     return T, root, edge_to_blen
 
 
-def get_hky_pre_Q(kappa, nt_probs):
-    """
-    This is just hky.
-
-    """
-    n = 4
-    transitions = ((0, 3), (3, 0), (1, 2), (2, 1))
-    pre_Q = np.zeros((n, n), dtype=float)
-    for sa, pa in enumerate(nt_probs):
-        for sb, pb in enumerate(nt_probs):
-            if sa == sb:
-                continue
-            rate = 1.0
-            rate *= pb
-            if (sa, sb) in transitions:
-                rate *= kappa
-            pre_Q[sa, sb] = rate
-    return pre_Q
-
-
-def ad_hoc_fasta_reader(fin):
-    name_seq_pairs = []
-    while True:
-
-        # read the name
-        line = fin.readline().strip()
-        if not line:
-            return name_seq_pairs
-        assert_equal(line[0], '>')
-        name = line[1:].strip()
-
-        # read the single line sequence
-        line = fin.readline().strip()
-        seq = line
-        unrecognized = set(line) - set('ACGT')
-        if unrecognized:
-            raise Exception('unrecognized nucleotides: ' + str(unrecognized))
-
-        name_seq_pairs.append((name, seq))
-
-
 def get_log_likelihood(T, root, data, edges,
         kappa, nt_probs, tau, edge_rates):
     """
 
     """
+    print('getting log likelihood:')
+    print('kappa:', kappa)
+    print('nt probs:', nt_probs)
+    print('tau:', tau)
+
     # Compute the unscaled nucleotide pre-rate-matrix.
     pre_Q = get_hky_pre_Q(kappa, nt_probs)
+    rates = pre_Q.sum(axis=1)
+    scaled_pre_Q = pre_Q / np.dot(rates, nt_probs)
 
     # Compute the gene conversion pre-rate-matrix.
-    pre_R = get_combined_pre_Q(pre_Q, tau)
-
     # Define the diagonal entries of the gene conversion rate matrix.
+    pre_R = get_combined_pre_Q(scaled_pre_Q, tau)
     R = pre_R - np.diag(pre_R.sum(axis=1))
 
-    # Compute the equilibrium distribution.
+    # Do a similar thing for the pre-rate matrix.
+    # This does not use the tau parameter.
+    pre_S = get_lockstep_pre_Q(scaled_pre_Q)
+    S = pre_S - np.diag(pre_S.sum(axis=1))
+    #print('rate matrix S:')
+    #print(S)
+
+    # The distribution at the root will be the distribution of S.
+    # It should be like nt_probs with some zeros.
     # Note that this distribution is invariant to the scale of the rate matrix.
-    root_distn = get_distn_brute(R)
-    #print('root distn:', root_distn)
+    root_distn = get_distn_brute(S)
+    #print('root distribution:')
+    #print(root_distn)
+
+    # Get the rate matrices on edges.
+    # The terminal edge leading to the Tamarin outgroup will use S.
+    edge_to_R = {}
+    for edge in T.edges():
+        na, nb = edge
+        if nb == 'Tamarin':
+            edge_to_R[edge] = S
+        else:
+            edge_to_R[edge] = R
 
     # Compute the transition probability matrix for each edge.
     edge_to_P = {}
     for edge_index, edge_rate in enumerate(edge_rates):
         edge = edges[edge_index]
-        P = expm(edge_rate * R)
+        P = expm(edge_rate * edge_to_R[edge])
         edge_to_P[edge] = P
 
     # Get the likelihood at each site.
@@ -121,7 +113,10 @@ def get_log_likelihood(T, root, data, edges,
     print('lhoods:', lhoods)
     print()
     """
-    return np.log(lhoods).sum()
+    ll = np.log(lhoods).sum()
+    print('log likelihood:', ll)
+    print()
+    return ll
 
 
 def objective(T, root, data, edges, log_params):
@@ -156,9 +151,11 @@ def objective(T, root, data, edges, log_params):
 
 
 def main(args):
-
     # Read the hardcoded tree information.
-    T, root, edge_to_blen = get_tree_info()
+    #T, root, edge_to_blen = get_tree_info()
+    T, root = get_tree_info_with_outgroup()
+    leaves = set(v for v, d in T.degree().items() if d == 1)
+    outgroup = 'Tamarin'
 
     # Read the data as name sequence pairs.
     with open(args.fasta) as fin:
@@ -172,17 +169,24 @@ def main(args):
     # Convert the (name, sequence) pairs to observed data
     # for the gene conversion stochastic process.
     suffixes = ('EDN', 'ECP')
-    taxa = ('Gorilla', 'Macaque', 'Chimpanzee', 'Orangutan')
-    nsites = len(name_seq_pairs[0][0])
+    nsites = len(name_seq_pairs[0][1])
+    print('number of sites:', nsites)
     constraints = []
     for site in range(nsites):
         node_to_lmap = {}
         for node in T:
-            if node in taxa:
+            if node in leaves:
                 lmap = np.zeros(len(nt_pairs), dtype=float)
-                nt_pair = (
-                        name_to_seq[node + suffixes[0]][site],
-                        name_to_seq[node + suffixes[1]][site])
+                if node == outgroup:
+                    # tamarin has only EDN
+                    nt_pair = (
+                            name_to_seq[node + suffixes[0]][site],
+                            name_to_seq[node + suffixes[0]][site])
+                else:
+                    # non-outgroup leaves have both EDN and ECP
+                    nt_pair = (
+                            name_to_seq[node + suffixes[0]][site],
+                            name_to_seq[node + suffixes[1]][site])
                 state = pair_to_state[nt_pair]
                 lmap[state] = 1.0
             else:

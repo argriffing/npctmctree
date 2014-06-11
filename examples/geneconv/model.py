@@ -91,11 +91,12 @@ def get_lockstep_pre_Q(pre_Q):
                 continue
             sa0, sa1 = sa
             sb0, sb1 = sb
-            if sa0 != sa1:
-                continue
-            if sb0 != sb1:
-                continue
-            pre_R[i, j] = pre_Q[sa0, sb0]
+            if sa0 == sa1 and sb0 == sb1:
+                # meaningful transitions
+                pre_R[i, j] = pre_Q[sa0, sb0]
+            elif sa0 != sa1 and sb0 == sb1:
+                # dummy transitions that will never happen
+                pre_R[i, j] = 1
     return pre_R
 
 

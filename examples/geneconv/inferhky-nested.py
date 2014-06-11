@@ -53,6 +53,7 @@ from npmctree.dynamic_lmap_lhood import get_iid_lhoods
 import npctmctree
 from npctmctree.optimize import estimate_edge_rates
 
+from util import ad_hoc_fasta_reader
 from model import (
         get_distn_brute,
         get_tree_info_with_outgroup,
@@ -80,27 +81,6 @@ def get_tree_info():
         T.add_edge(*edge)
         edge_to_blen[edge] = blen
     return T, root, edge_to_blen
-
-
-def ad_hoc_fasta_reader(fin):
-    name_seq_pairs = []
-    while True:
-
-        # read the name
-        line = fin.readline().strip()
-        if not line:
-            return name_seq_pairs
-        assert_equal(line[0], '>')
-        name = line[1:].strip()
-
-        # read the single line sequence
-        line = fin.readline().strip()
-        seq = line
-        unrecognized = set(line) - set('ACGT')
-        if unrecognized:
-            raise Exception('unrecognized nucleotides: ' + str(unrecognized))
-
-        name_seq_pairs.append((name, seq))
 
 
 #TODO move this somewhere else
@@ -203,7 +183,6 @@ def get_log_likelihood(T, root, data_weight_pairs, kappa, nt_probs, tau,
     print('kappa:', kappa)
     print('nt probs:', nt_probs)
     print('tau:', tau)
-    print()
 
     # Compute the unscaled nucleotide pre-rate-matrix.
     pre_Q = get_hky_pre_Q(kappa, nt_probs)
@@ -219,8 +198,8 @@ def get_log_likelihood(T, root, data_weight_pairs, kappa, nt_probs, tau,
     # This does not use the tau parameter.
     pre_S = get_lockstep_pre_Q(scaled_pre_Q)
     S = pre_S - np.diag(pre_S.sum(axis=1))
-    print('rate matrix S:')
-    print(S)
+    #print('rate matrix S:')
+    #print(S)
 
     # The distribution at the root will be the distribution of S.
     # It should be like nt_probs with some zeros.
@@ -420,7 +399,7 @@ def main(args):
     # Make some initial parameter value guesses.
     kappa = 2.0
     nt_probs = [0.25] * 4
-    tau = 1.0
+    tau = 2.0
     #kappa = 1.2
     #tau = 0.5
     #nt_probs = np.array([0.1, 0.2, 0.3, 0.4])
@@ -453,9 +432,11 @@ def main(args):
     print()
 
     # Use a black box search.
-    res = scipy.optimize.minimize(f, logx0,
-            #method='L-BFGS-B')
-            method='Nelder-Mead')
+    #res = scipy.optimize.minimize(f, logx0, method='Nelder-Mead')
+    #res = scipy.optimize.basinhopping(f, logx0, T=30, stepsize=1e-3)
+    nparams = 6
+    bounds = [np.log([0.1, 3]) for i in range(6)]
+    res = scipy.optimize.differential_evolution(f, bounds)
 
     # Report the raw search output.
     print('raw search output:')
