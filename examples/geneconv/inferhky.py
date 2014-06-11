@@ -17,6 +17,7 @@ from npmctree.dynamic_lmap_lhood import get_iid_lhoods
 
 import npctmctree
 from npctmctree.optimize import estimate_edge_rates
+from npctmctree.expect import get_edge_to_expectation
 
 from util import ad_hoc_fasta_reader
 from model import (
@@ -25,6 +26,7 @@ from model import (
         get_hky_pre_Q,
         get_combined_pre_Q,
         get_lockstep_pre_Q,
+        get_pure_geneconv_pre_Q,
         )
 
 
@@ -46,6 +48,41 @@ def get_tree_info():
         T.add_edge(*edge)
         edge_to_blen[edge] = blen
     return T, root, edge_to_blen
+
+
+def get_edge_to_pre_R(T, root, kappa, nt_probs, tau):
+    """
+
+    Returns
+    -------
+    edge_to_pre_R : x
+        x
+
+    """
+    # Compute the unscaled nucleotide pre-rate-matrix.
+    pre_Q = get_hky_pre_Q(kappa, nt_probs)
+    rates = pre_Q.sum(axis=1)
+    scaled_pre_Q = pre_Q / np.dot(rates, nt_probs)
+
+    # Compute the gene conversion pre-rate-matrix.
+    # Define the diagonal entries of the gene conversion rate matrix.
+    pre_R = get_combined_pre_Q(scaled_pre_Q, tau)
+
+    # Do a similar thing for the pre-rate matrix.
+    # This does not use the tau parameter.
+    pre_S = get_lockstep_pre_Q(scaled_pre_Q)
+
+    # Get the rate matrices on edges.
+    # The terminal edge leading to the Tamarin outgroup will use S.
+    edge_to_pre_R = {}
+    for edge in T.edges():
+        na, nb = edge
+        if nb == 'Tamarin':
+            edge_to_pre_R[edge] = pre_S
+        else:
+            edge_to_pre_R[edge] = pre_R
+
+    return edge_to_pre_R
 
 
 def get_edge_to_R(T, root, kappa, nt_probs, tau):
@@ -100,10 +137,10 @@ def get_log_likelihood(T, root, data, edges, kappa, nt_probs, tau, edge_rates):
     """
 
     """
-    print('getting log likelihood:')
-    print('kappa:', kappa)
-    print('nt probs:', nt_probs)
-    print('tau:', tau)
+    #print('getting log likelihood:')
+    #print('kappa:', kappa)
+    #print('nt probs:', nt_probs)
+    #print('tau:', tau)
 
     edge_to_R, root_distn = get_edge_to_R(T, root, kappa, nt_probs, tau)
 
@@ -130,7 +167,6 @@ def get_log_likelihood(T, root, data, edges, kappa, nt_probs, tau, edge_rates):
     """
     ll = np.log(lhoods).sum()
     print('log likelihood:', ll)
-    print()
     return ll
 
 
@@ -261,6 +297,39 @@ def main(args):
             T, root, edge_to_R, root_distn, data_weight_pairs)
     print('estimated edge rates:', edge_to_rate)
     print('corresponding neg log likelihood:', neg_ll)
+    print()
+
+    # Compute posterior expected gene conversion event counts.
+    edge_to_combination = {}
+    for edge in T.edges():
+        na, nb = edge
+        if nb == 'Tamarin':
+            edge_to_combination[edge] = np.zeros((4*4, 4*4), dtype=float)
+        else:
+            geneconv_rate = edge_to_rate[edge] * tau
+            pre_G = get_pure_geneconv_pre_Q(4, geneconv_rate)
+            edge_to_combination[edge] = pre_G
+    print('computing gene conversion event expectations on edges...')
+    edge_to_expectation = get_edge_to_expectation(
+            T, root, edge_to_R, edge_to_combination,
+            root_distn, data_weight_pairs)
+    for edge in edges:
+        x = edge_to_expectation[edge]
+        print('edge:', edge, 'geneconv event expectation:', x)
+    print()
+
+    # Compute posterior expected transition event counts.
+    edge_to_combination = get_edge_to_pre_R(T, root, kappa, nt_probs, tau)
+    for edge in edge_to_combination:
+        edge_to_combination[edge] = edge_to_rate[edge] * (
+                edge_to_combination[edge])
+    print('computing total transition event expectations on edges...')
+    edge_to_expectation = get_edge_to_expectation(
+            T, root, edge_to_R, edge_to_combination,
+            root_distn, data_weight_pairs)
+    for edge in edges:
+        x = edge_to_expectation[edge]
+        print('edge:', edge, 'total event expectation:', x)
     print()
 
 
