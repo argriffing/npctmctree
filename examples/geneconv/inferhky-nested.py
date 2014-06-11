@@ -200,16 +200,15 @@ def get_log_likelihood(T, root, data_weight_pairs, kappa, nt_probs, tau):
     print(root_distn)
 
     # Compute the transition probability matrix for each edge.
-    #TODO remove this debugging thing
-    edge_to_R = dict([
-        (('N0', 'Macaque'), 0.1 * R),
-        (('N0', 'N1'), 0.2 * R),
-        (('N1', 'Orangutan'), 0.3 * R),
-        (('N1', 'N2'), 0.4 * R),
-        (('N2', 'Chimpanzee'), 0.5 * R),
-        (('N2', 'Gorilla'), 0.6 * R),
-        ])
-    #edge_to_R = dict((e, R) for e in T.edges())
+    #edge_to_R = dict([
+        #(('N0', 'Macaque'), 0.1 * R),
+        #(('N0', 'N1'), 0.2 * R),
+        #(('N1', 'Orangutan'), 0.3 * R),
+        #(('N1', 'N2'), 0.4 * R),
+        #(('N2', 'Chimpanzee'), 0.5 * R),
+        #(('N2', 'Gorilla'), 0.6 * R),
+        #])
+    edge_to_R = dict((e, R) for e in T.edges())
 
     # Get the likelihood at each site.
     #lhoods = get_iid_lhoods(T, edge_to_P, root, root_distn, data)
@@ -321,12 +320,12 @@ def main(args):
     data_weight_pairs = [(c, 1.0) for c in constraints]
 
     # Make some initial parameter value guesses.
-    #kappa = 2.0
-    #nt_probs = [0.25] * 4
-    #tau = 0.1
-    kappa = 1.2
-    tau = 0.5
-    nt_probs = np.array([0.1, 0.2, 0.3, 0.4])
+    kappa = 2.0
+    nt_probs = [0.25] * 4
+    tau = 0.1
+    #kappa = 1.2
+    #tau = 0.5
+    #nt_probs = np.array([0.1, 0.2, 0.3, 0.4])
 
     # Pack the initial parameter guesses.
     x0 = np.concatenate([[kappa], nt_probs, [tau]])
