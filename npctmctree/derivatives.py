@@ -188,22 +188,39 @@ def get_log_likelihood_info(
     # To compute the hessian,
     # for each edge pair adjust the transition probability matrix.
     mem.lhood_diff_xy[...] = 1
+    #mem.transp_mod_ws[...] = mem.transp_ws
     edges = list(T.edges())
+
+    # Outer loop over edges.
     for edge0 in edges:
         na0, nb0 = edge0
         eidx0 = node_to_idx[nb0] - 1
         Q0 = transq_unscaled[eidx0]
+
+        # Update outer block.
+        #old_block_0 = mem.transp_mod_ws[eidx0, :, :]
+        #mem.transp_mod_ws[eidx0, :, :] = np.dot(
+                #Q0, mem.transp_mod_ws[eidx0])
+
+        # Inner loop over edges.
         for edge1 in edges:
             na1, nb1 = edge1
             eidx1 = node_to_idx[nb1] - 1
             Q1 = transq_unscaled[eidx1]
 
-            # Compute the hessian.
+            # Update inner block.
+            #old_block_1 = mem.transp_mod_ws[eidx1, :, :]
+            #mem.transp_mod_ws[eidx1, :, :] = np.dot(
+                    #Q1, mem.transp_mod_ws[eidx1])
+
+            # Update blocks.
             mem.transp_mod_ws[...] = mem.transp_ws
             mem.transp_mod_ws[eidx0, :, :] = np.dot(
                     Q0, mem.transp_mod_ws[eidx0])
             mem.transp_mod_ws[eidx1, :, :] = np.dot(
                     Q1, mem.transp_mod_ws[eidx1])
+
+            # Compute the hessian.
             wrapped_iid_likelihoods(
                     m.indices, m.indptr,
                     mem.transp_mod_ws,
@@ -212,6 +229,12 @@ def get_log_likelihood_info(
                     mem.lhood_diff_xy[eidx0, eidx1, :],
                     validation,
                     )
+
+            # Restore inner block.
+            #mem.transp_mod_ws[eidx1, :, :] = old_block_1
+
+        # Restore outer block.
+        #mem.transp_mod_ws[eidx0, :, :] = old_block_0
 
     # Compute the ingredients of the hessian.
     # TODO Should this be computed within cython?
