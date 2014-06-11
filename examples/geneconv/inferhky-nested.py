@@ -8,11 +8,12 @@ import itertools
 
 import numpy as np
 import networkx as nx
-from numpy.testing import assert_equal
+from numpy.testing import assert_equal, assert_allclose
 from scipy.linalg import expm
 import scipy.optimize
 
 import npmctree
+from npmctree.dynamic_fset_lhood import get_lhood, get_edge_to_distn2d
 from npmctree.dynamic_lmap_lhood import get_iid_lhoods
 
 import npctmctree
@@ -81,7 +82,97 @@ def ad_hoc_fasta_reader(fin):
         name_seq_pairs.append((name, seq))
 
 
-def get_log_likelihood(T, root, data, kappa, nt_probs, tau):
+def get_exact_data():
+    # Define a tree structure with edge-specific rates.
+    T = nx.DiGraph()
+    root = 'N0'
+    edge_to_rate = {}
+    triples = (
+        ('N0', 'Macaque', 0.1),
+        ('N0', 'N1', 0.2),
+        ('N1', 'Orangutan', 0.3),
+        ('N1', 'N2', 0.4),
+        ('N2', 'Chimpanzee', 0.5),
+        ('N2', 'Gorilla', 0.6),
+        )
+    for na, nb, rate in triples:
+        T.add_edge(na, nb)
+        edge_to_rate[na, nb] = rate
+
+    # Define some hky parameter values.
+    kappa = 1.2
+    nt_probs = np.array([0.1, 0.2, 0.3, 0.4])
+    assert_allclose(nt_probs.sum(), 1)
+
+    # Define a gene conversion rate parameter.
+    # Because of the scaling of the hky rate matrix,
+    # this parameter will have units of something like
+    # "expected number of gene conversion events per point mutation event."
+    tau = 0.5
+
+    # Construct the hky rate matrix.
+    # Scale it to have expected rate 1.0.
+    pre_Q = get_hky_pre_Q(kappa, nt_probs)
+    rates = pre_Q.sum(axis=1)
+    expected_rate = np.dot(rates, nt_probs)
+    Q = (pre_Q - np.diag(rates)) / expected_rate
+    
+    # Construct the gene conversion rate matrix.
+    scaled_pre_Q = pre_Q / expected_rate
+    pre_R = get_combined_pre_Q(scaled_pre_Q, tau)
+    R = pre_R - np.diag(pre_R.sum(axis=1))
+
+    # Map each edge to a transition probability matrix.
+    edge_to_P = {}
+    for edge, rate in edge_to_rate.items():
+        edge_to_P[edge] = expm(rate * R)
+
+    # Define the root distribution.
+    root_distn = get_distn_brute(R)
+
+    # NOTE This is where we compute a distribution instead of sampling
+    leaves = set(v for v, d in T.degree().items() if d == 1)
+    internal_nodes = set(T) - leaves
+
+    # Instead of sampling states at the leaves,
+    # find the exact joint distribution of leaf states.
+    nstates = root_distn.shape[0]
+    states = range(nstates)
+    # Initialize the distribution over leaf data (yes this is confusing).
+    data_prob_pairs = []
+    assignments = list(itertools.product(states, repeat=len(leaves)))
+    for i, assignment in enumerate(assignments):
+        print(i+1, 'of', len(assignments))
+
+        # Get the map from leaf to state.
+        leaf_to_state = dict(zip(leaves, assignment))
+
+        # Define the data associated with this assignment.
+        # All leaf states are fully observed.
+        # All internal states are completely unobserved.
+        node_to_data_fvec1d = {}
+        for node in leaves:
+            state = leaf_to_state[node]
+            fvec1d = np.zeros(nstates, dtype=bool)
+            fvec1d[state] = True
+            node_to_data_fvec1d[node] = fvec1d
+        for node in internal_nodes:
+            fvec1d = np.ones(nstates, dtype=bool)
+            node_to_data_fvec1d[node] = fvec1d
+
+        # Compute the likelihood for this data.
+        lhood = get_lhood(T, edge_to_P, root, root_distn, node_to_data_fvec1d)
+        data_prob_pairs.append((node_to_data_fvec1d, lhood))
+
+    # Check that the computed joint distribution over leaf states
+    # is actually a distribution.
+    datas, probs = zip(*data_prob_pairs)
+    assert_allclose(sum(probs), 1)
+
+    return data_prob_pairs
+
+
+def get_log_likelihood(T, root, data_weight_pairs, kappa, nt_probs, tau):
     """
 
     """
@@ -130,14 +221,14 @@ def get_log_likelihood(T, root, data, kappa, nt_probs, tau):
     #R = pre_R - np.diag(pre_R.sum(axis=1))
     #root_distn = get_distn_brute(R)
     #guess_edge_to_rate = dict((edge, 0.1) for edge in edges)
-    data_prob_pairs = [(x, 1) for x in data]
+    #data_prob_pairs = [(x, 1) for x in data]
     #edge_to_Q = dict((edge, R) for edge in edges)
 
     # Use the relatively sophisticated optimizer.
     #print('updating edge rates with the sophisticated search...')
     print('estimating edge rates...')
     edge_to_rate, neg_ll = estimate_edge_rates(
-            T, root, edge_to_R, root_distn, data_prob_pairs)
+            T, root, edge_to_R, root_distn, data_weight_pairs)
     print('estimated edge rates:', edge_to_rate)
     print('corresponding neg log likelihood:', neg_ll)
     print()
@@ -157,7 +248,7 @@ def get_log_likelihood(T, root, data, kappa, nt_probs, tau):
     return neg_ll
 
 
-def objective(T, root, data, log_params):
+def objective(T, root, data_weight_pairs, log_params):
     """
     The objective is a penalized negative log likelihood.
 
@@ -179,7 +270,8 @@ def objective(T, root, data, log_params):
     nt_penalty = np.square(np.log(nt_sum))
 
     # compute the log likelihood
-    neg_ll = get_log_likelihood(T, root, data, kappa, nt_probs, tau)
+    neg_ll = get_log_likelihood(T, root,
+            data_weight_pairs, kappa, nt_probs, tau)
 
     # return the penalized negative log likelihood
     #print(ll, nt_penalty)
@@ -223,6 +315,10 @@ def main(args):
             node_to_lmap[node] = lmap
         constraints.append(node_to_lmap)
 
+    # FIXME actually let's ignore that and do something completely different
+    constraints = None
+    data_weight_pairs = get_exact_data()
+
     # Make some initial parameter value guesses.
     #kappa = 2.0
     #nt_probs = [0.25] * 4
@@ -236,7 +332,7 @@ def main(args):
     logx0 = np.log(x0)
 
     # Define the objective function to minimize.
-    f = functools.partial(objective, T, root, constraints)
+    f = functools.partial(objective, T, root, data_weight_pairs)
 
     # Report something about the initial guess.
     print('initial guess:')
