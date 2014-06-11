@@ -20,6 +20,39 @@ def estimate_edge_rates(T, root, edge_to_Q, root_distn1d, data_weight_pairs,
     """
     Estimate edge-specific rate scaling factors.
 
+    Parameters
+    ----------
+    T : networkx DiGraph
+        The rooted tree as a directed graph.
+    root : hashable
+        The root of the tree.
+        This is a node in the directed graph, which can be anything hashable.
+    edge_to_Q : dict
+        Map from directed edges to transition rate matrices.
+        The directed edges are ordered node pairs, and within each pair
+        the ordering of the two nodes is from the root towards the leaves
+        of the tree.
+        The transition rate matrices are represented as square numpy ndarrays.
+    root_distn1d : 1d ndarray
+        The prior state distribution at the root.
+    data_weight_pairs : sequence of pairs
+        Weighted observations.
+        The first element is the observation,
+        and the second element is the weight.
+        Each observation maps nodes of the tree T to emission likelihood
+        vectors, where the vectors are 1d ndarrays whose length is equal
+        to the size of the state space of the stochastic process on the tree.
+    method : str
+        The optimization method to be used within the edge-specific rate
+        estimation inner loop.
+        Suggested methods include 'trust-ncg' which can reach high accuracy
+        but uses relatively slow hessian-vector products,
+        and 'L-BFGS-G' for which each iteration is faster
+        because it uses only function and gradient evaluations but not
+        hessian or hessian-vector product evaluations.
+        For more information about the choices of methods
+        see scipy.optimize.minimize.
+
     Returns
     -------
     edge_to_rate : dict
@@ -28,7 +61,7 @@ def estimate_edge_rates(T, root, edge_to_Q, root_distn1d, data_weight_pairs,
         Negative log likelihood computed using the estimated edge rates.
 
     """
-    #TODO docstring and unit tests
+    #TODO unit tests
 
     # Define a toposort node ordering and a corresponding csr matrix.
     nodes = nx.topological_sort(T, [root])
