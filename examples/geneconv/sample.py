@@ -59,7 +59,9 @@ def main(args):
         edge_to_rate[na, nb] = rate
 
     # Define some hky parameter values.
-    kappa = 1.2
+    kappa = 1
+    #nt_probs = np.array([0.25] * 4)
+    #kappa = 1.2
     nt_probs = np.array([0.1, 0.2, 0.3, 0.4])
     assert_allclose(nt_probs.sum(), 1)
 
@@ -75,19 +77,29 @@ def main(args):
     rates = pre_Q.sum(axis=1)
     expected_rate = np.dot(rates, nt_probs)
     Q = (pre_Q - np.diag(rates)) / expected_rate
+
+    # Check that Q is time-reversible.
+    DQ = np.dot(np.diag(nt_probs), Q)
+    assert_allclose(DQ, DQ.T)
     
     # Construct the gene conversion rate matrix.
     scaled_pre_Q = pre_Q / expected_rate
     pre_R = get_combined_pre_Q(scaled_pre_Q, tau)
     R = pre_R - np.diag(pre_R.sum(axis=1))
 
+    # Define the root distribution.
+    root_distn = get_distn_brute(R)
+
+    # Check that the gene conversion rate matrix is not time-reversible.
+    DR = np.dot(np.diag(root_distn), R)
+    if np.allclose(DR, DR.T):
+        raise Exception('the gene conversion rate matrix '
+                'is unexpectedly time-reversible')
+
     # Map each edge to a transition probability matrix.
     edge_to_P = {}
     for edge, rate in edge_to_rate.items():
         edge_to_P[edge] = expm(rate * R)
-
-    # Define the root distribution.
-    root_distn = get_distn_brute(R)
 
     # Do not impose any data constraints.
     node_to_data_lmap = {}
@@ -117,7 +129,7 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--nsites', type=int, default=1000,
+    parser.add_argument('--nsites', type=int, default=10,
             help='sample an alignment consisting of this many nucleotide sites')
     main(parser.parse_args())
 

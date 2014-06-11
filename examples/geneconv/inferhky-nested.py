@@ -1,4 +1,37 @@
 """
+Estimate parameters for the gene conversion project.
+
+This is the result of the Nelder-Mead on top of L-BFGS-B search:
+
+raw search output:
+status: 0
+nfev: 341
+success: True
+fun: 9375.3454959203027
+x: array([ 0.00906516, -2.46924945, -1.72693729, -1.29795235, -0.97236314,
+-0.78168797])
+message: 'Optimization terminated successfully.'
+nit: 210
+
+This is the result polishing the above results
+using a Nelder-Mead on top of trust-ncg search:
+
+raw search output:
+status: 0
+nfev: 281
+success: True
+fun: 9375.337236070578
+x: array([ 0.00882672, -2.37894293, -1.63666853, -1.20775805, -0.88213141,
+-0.78150991])
+message: 'Optimization terminated successfully.'
+nit: 173
+
+max likelihood parameter estimates...
+kappa: 1.00886579031
+nt probs: [ 0.09264455  0.19461915  0.29885397  0.41388233]
+tau: 0.457714379511
+
+
 """
 from __future__ import division, print_function, absolute_import
 
@@ -238,11 +271,14 @@ def get_log_likelihood(T, root, data_weight_pairs, kappa, nt_probs, tau,
     #print('updating edge rates with the sophisticated search...')
     print('estimating edge rates...')
     edge_to_rate, neg_ll = estimate_edge_rates(
-            T, root, edge_to_R, root_distn, data_weight_pairs)
+            T, root, edge_to_R, root_distn, data_weight_pairs,
+            #method='trust-ncg')
+            method='L-BFGS-B')
     print('estimated edge rates:', edge_to_rate)
     print('corresponding neg log likelihood:', neg_ll)
     print()
 
+    """
     # Set the hint.
     if hint is None:
         next_hint = edge_to_rate
@@ -251,6 +287,7 @@ def get_log_likelihood(T, root, data_weight_pairs, kappa, nt_probs, tau,
         for edge, hint_rate in hint.items():
             next_hint[edge] = hint_rate * edge_to_rate[edge]
     rate_hint_object.set_hint(log_params, next_hint)
+    """
 
     # Return the log likelihood.
     """
@@ -374,6 +411,13 @@ def main(args):
     # Pack the initial parameter guesses.
     x0 = np.concatenate([[kappa], nt_probs, [tau]])
     logx0 = np.log(x0)
+
+    # NOTE start with a close guess computed using L-BFGS-B
+    logx0 = np.array([
+        0.00906516,
+        -2.46924945, -1.72693729, -1.29795235, -0.97236314,
+        -0.78168797])
+
 
     # Initialize the rate hint object.
     rate_hint_object = RateHint()

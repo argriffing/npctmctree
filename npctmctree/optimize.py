@@ -15,7 +15,8 @@ from .em import EMStorage, em_function
 from .squarem import fixed_point_squarem
 
 
-def estimate_edge_rates(T, root, edge_to_Q, root_distn1d, data_weight_pairs):
+def estimate_edge_rates(T, root, edge_to_Q, root_distn1d, data_weight_pairs,
+        method='trust-ncg'):
     """
     Estimate edge-specific rate scaling factors.
 
@@ -121,9 +122,12 @@ def estimate_edge_rates(T, root, edge_to_Q, root_distn1d, data_weight_pairs):
     #print(x0)
     #print(np.exp(x0))
 
-    result = minimize(f, x0, jac=g, hess=h, tol=1e-8,
-            method='trust-ncg')
-            #method='dogleg')
+    if method == 'trust-ncg':
+        result = minimize(f, x0, jac=g, hess=h, tol=1e-8, method=method)
+    elif method == 'L-BFGS-B':
+        result = minimize(f, x0, jac=g, method=method)
+    else:
+        result = minimize(f, x0, jac=g, hess=h, method=method)
 
     #print('result of hessian-guided search:')
     #print(result)
