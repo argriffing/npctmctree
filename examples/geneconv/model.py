@@ -9,6 +9,7 @@ from __future__ import division, print_function, absolute_import
 
 import itertools
 
+import networkx as nx
 import numpy as np
 from numpy.testing import assert_allclose, assert_equal
 from scipy.sparse.linalg import eigs
@@ -16,6 +17,42 @@ from scipy.sparse.linalg import eigs
 
 def hamming_distance(a, b):
     return sum(1 for x, y in zip(a, b) if x != y)
+
+
+def get_tree_info_with_outgroup():
+    T = nx.DiGraph()
+    root = 'N0'
+    T.add_edges_from([
+            ('N0', 'Tamarin'),
+            ('N0', 'N1'),
+            ('N1', 'Macaque'),
+            ('N1', 'N2'),
+            ('N2', 'Orangutan'),
+            ('N2', 'N3'),
+            ('N3', 'Chimpanzee'),
+            ('N3', 'Gorilla'),
+            ])
+    return T, root
+
+
+def get_hky_pre_Q(kappa, nt_probs):
+    """
+    This is just hky.
+
+    """
+    n = 4
+    transitions = ((0, 3), (3, 0), (1, 2), (2, 1))
+    pre_Q = np.zeros((n, n), dtype=float)
+    for sa, pa in enumerate(nt_probs):
+        for sb, pb in enumerate(nt_probs):
+            if sa == sb:
+                continue
+            rate = 1.0
+            rate *= pb
+            if (sa, sb) in transitions:
+                rate *= kappa
+            pre_Q[sa, sb] = rate
+    return pre_Q
 
 
 def get_distn_brute(Q):
@@ -37,6 +74,29 @@ def get_nt_geneconv_state_space():
     nt_pairs = list(itertools.product('ACGT', repeat=2))
     pair_to_state = dict((pair, i) for i, pair in enumerate(nt_pairs))
     return nt_pairs, pair_to_state
+
+
+def get_lockstep_pre_Q(pre_Q):
+    """
+    For making an artificially large state space.
+
+    """
+    n = pre_Q.shape[0]
+    assert_equal(pre_Q.shape, (n, n))
+    pre_R = np.zeros((n*n, n*n), dtype=float)
+    nt_pairs = list(itertools.product(range(n), repeat=2))
+    for i, sa in enumerate(nt_pairs):
+        for j, sb in enumerate(nt_pairs):
+            if sa == sb:
+                continue
+            sa0, sa1 = sa
+            sb0, sb1 = sb
+            if sa0 != sa1:
+                continue
+            if sb0 != sb1:
+                continue
+            pre_R[i, j] = pre_Q[sa0, sb0]
+    return pre_R
 
 
 def get_combined_pre_Q(pre_Q, tau):
