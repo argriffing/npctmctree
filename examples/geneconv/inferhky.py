@@ -187,6 +187,9 @@ def objective(T, root, data, edges, log_params):
     tau = params[5]
     edge_rates = params[6:]
 
+    #NOTE setting tau to zero
+    tau = 0
+
     # normalize the nt probs and get the constraint violation penalty
     nt_sum = nt_weights.sum()
     nt_probs = nt_weights / nt_sum
@@ -275,6 +278,10 @@ def main(args):
     kappa = xopt[0]
     nt_weights = xopt[1:5]
     tau = xopt[5]
+
+    #NOTE setting tau to zero
+    tau = 0
+
     edge_rates = xopt[6:]
     nt_probs = nt_weights / nt_weights.sum()
     print('max likelihood parameter estimates...')
