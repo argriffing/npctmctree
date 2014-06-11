@@ -41,7 +41,7 @@ def get_hky_pre_Q(kappa, nt_probs):
 
     """
     n = 4
-    transitions = ((0, 3), (3, 0), (1, 2), (2, 1))
+    transitions = ((0, 2), (2, 0), (1, 3), (3, 1))
     pre_Q = np.zeros((n, n), dtype=float)
     for sa, pa in enumerate(nt_probs):
         for sb, pb in enumerate(nt_probs):

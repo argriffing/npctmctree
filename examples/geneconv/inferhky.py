@@ -48,16 +48,17 @@ def get_tree_info():
     return T, root, edge_to_blen
 
 
-def get_log_likelihood(T, root, data, edges,
-        kappa, nt_probs, tau, edge_rates):
+def get_edge_to_R(T, root, kappa, nt_probs, tau):
     """
 
-    """
-    print('getting log likelihood:')
-    print('kappa:', kappa)
-    print('nt probs:', nt_probs)
-    print('tau:', tau)
+    Returns
+    -------
+    edge_to_R : x
+        x
+    root_distn : x
+        x
 
+    """
     # Compute the unscaled nucleotide pre-rate-matrix.
     pre_Q = get_hky_pre_Q(kappa, nt_probs)
     rates = pre_Q.sum(axis=1)
@@ -91,6 +92,20 @@ def get_log_likelihood(T, root, data, edges,
             edge_to_R[edge] = S
         else:
             edge_to_R[edge] = R
+
+    return edge_to_R, root_distn
+
+
+def get_log_likelihood(T, root, data, edges, kappa, nt_probs, tau, edge_rates):
+    """
+
+    """
+    print('getting log likelihood:')
+    print('kappa:', kappa)
+    print('nt probs:', nt_probs)
+    print('tau:', tau)
+
+    edge_to_R, root_distn = get_edge_to_R(T, root, kappa, nt_probs, tau)
 
     # Compute the transition probability matrix for each edge.
     edge_to_P = {}
@@ -197,8 +212,8 @@ def main(args):
     # Make some initial parameter value guesses.
     edges = list(T.edges())
     kappa = 2.0
-    nt_probs = [0.25] * 4
-    tau = 0.1
+    nt_probs = [0.30, 0.25, 0.20, 0.25]
+    tau = 2.0
     edge_rates = [0.1] * len(edges)
 
     # Pack the initial parameter guesses.
@@ -237,18 +252,13 @@ def main(args):
 
     # Let's do some post-processing to re-estimate
     # branch-specific rates using accelerated EM.
-    pre_Q = get_hky_pre_Q(kappa, nt_probs)
-    pre_R = get_combined_pre_Q(pre_Q, tau)
-    R = pre_R - np.diag(pre_R.sum(axis=1))
-    root_distn = get_distn_brute(R)
-    guess_edge_to_rate = dict((edge, 0.1) for edge in edges)
-    data_prob_pairs = [(x, 1) for x in constraints]
-    edge_to_Q = dict((edge, R) for edge in edges)
+    edge_to_R, root_distn = get_edge_to_R(T, root, kappa, nt_probs, tau)
 
     # Use the relatively sophisticated optimizer.
     print('updating edge rates with the sophisticated search...')
+    data_weight_pairs = [(x, 1) for x in constraints]
     edge_to_rate, neg_ll = estimate_edge_rates(
-            T, root, edge_to_Q, root_distn, data_prob_pairs)
+            T, root, edge_to_R, root_distn, data_weight_pairs)
     print('estimated edge rates:', edge_to_rate)
     print('corresponding neg log likelihood:', neg_ll)
     print()

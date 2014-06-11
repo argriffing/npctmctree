@@ -432,11 +432,11 @@ def main(args):
     print()
 
     # Use a black box search.
-    #res = scipy.optimize.minimize(f, logx0, method='Nelder-Mead')
+    res = scipy.optimize.minimize(f, logx0, method='Nelder-Mead')
     #res = scipy.optimize.basinhopping(f, logx0, T=30, stepsize=1e-3)
-    nparams = 6
-    bounds = [np.log([0.1, 3]) for i in range(6)]
-    res = scipy.optimize.differential_evolution(f, bounds)
+    #nparams = 6
+    #bounds = [np.log([0.1, 3]) for i in range(6)]
+    #res = scipy.optimize.differential_evolution(f, bounds)
 
     # Report the raw search output.
     print('raw search output:')
