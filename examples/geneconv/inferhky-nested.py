@@ -1,7 +1,8 @@
 """
 Estimate parameters for the gene conversion project.
 
-This is the result of the Nelder-Mead on top of L-BFGS-B search:
+This is the result of the Nelder-Mead on top of L-BFGS-B search
+for the sample that is 1000 nucleotides long.
 
 raw search output:
 status: 0
@@ -413,10 +414,10 @@ def main(args):
     logx0 = np.log(x0)
 
     # NOTE start with a close guess computed using L-BFGS-B
-    logx0 = np.array([
-        0.00906516,
-        -2.46924945, -1.72693729, -1.29795235, -0.97236314,
-        -0.78168797])
+    #logx0 = np.array([
+        #0.00906516,
+        #-2.46924945, -1.72693729, -1.29795235, -0.97236314,
+        #-0.78168797])
 
 
     # Initialize the rate hint object.

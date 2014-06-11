@@ -59,9 +59,9 @@ def main(args):
         edge_to_rate[na, nb] = rate
 
     # Define some hky parameter values.
-    kappa = 1
+    #kappa = 1
     #nt_probs = np.array([0.25] * 4)
-    #kappa = 1.2
+    kappa = 1.2
     nt_probs = np.array([0.1, 0.2, 0.3, 0.4])
     assert_allclose(nt_probs.sum(), 1)
 
