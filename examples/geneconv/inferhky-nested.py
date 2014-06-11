@@ -172,7 +172,8 @@ def get_exact_data():
     return data_prob_pairs
 
 
-def get_log_likelihood(T, root, data_weight_pairs, kappa, nt_probs, tau):
+def get_log_likelihood(T, root, data_weight_pairs, kappa, nt_probs, tau,
+        rate_hint_object, log_params):
     """
 
     """
@@ -208,7 +209,17 @@ def get_log_likelihood(T, root, data_weight_pairs, kappa, nt_probs, tau):
         #(('N2', 'Chimpanzee'), 0.5 * R),
         #(('N2', 'Gorilla'), 0.6 * R),
         #])
-    edge_to_R = dict((e, R) for e in T.edges())
+    # Get a hint if possible.
+    hint = rate_hint_object.get_hint(log_params)
+    if hint is None:
+        print('no edge length scaling factor hint')
+        edge_to_R = dict((e, R) for e in T.edges())
+    else:
+        print('using edge length scaling factor hint:')
+        print(hint)
+        edge_to_R = {}
+        for edge in T.edges():
+            edge_to_R[edge] = hint[edge] * R
 
     # Get the likelihood at each site.
     #lhoods = get_iid_lhoods(T, edge_to_P, root, root_distn, data)
@@ -232,6 +243,15 @@ def get_log_likelihood(T, root, data_weight_pairs, kappa, nt_probs, tau):
     print('corresponding neg log likelihood:', neg_ll)
     print()
 
+    # Set the hint.
+    if hint is None:
+        next_hint = edge_to_rate
+    else:
+        next_hint = hint.copy()
+        for edge, hint_rate in hint.items():
+            next_hint[edge] = hint_rate * edge_to_rate[edge]
+    rate_hint_object.set_hint(log_params, next_hint)
+
     # Return the log likelihood.
     """
     print('search info parameters...')
@@ -247,7 +267,30 @@ def get_log_likelihood(T, root, data_weight_pairs, kappa, nt_probs, tau):
     return neg_ll
 
 
-def objective(T, root, data_weight_pairs, log_params):
+class RateHint(object):
+    def __init__(self):
+        # The first element of the pair is the log_params.
+        # The second element of the pair is a map from edge to rate.
+        self.cached_pairs = []
+
+    def get_hint(self, log_params):
+        if not self.cached_pairs:
+            return None
+        best_dist = None
+        best_hint = None
+        for x, hint in self.cached_pairs:
+            dist = np.linalg.norm(log_params - x)
+            if best_dist is None or dist < best_dist:
+                best_dist = dist
+                best_hint = hint
+        return best_hint.copy()
+
+    def set_hint(self, log_params, edge_to_rate):
+        pair = (log_params.copy(), edge_to_rate.copy())
+        self.cached_pairs.append(pair)
+
+
+def objective(T, root, data_weight_pairs, rate_hint_object, log_params):
     """
     The objective is a penalized negative log likelihood.
 
@@ -270,7 +313,8 @@ def objective(T, root, data_weight_pairs, log_params):
 
     # compute the log likelihood
     neg_ll = get_log_likelihood(T, root,
-            data_weight_pairs, kappa, nt_probs, tau)
+            data_weight_pairs, kappa, nt_probs, tau,
+            rate_hint_object, log_params)
 
     # return the penalized negative log likelihood
     #print(ll, nt_penalty)
@@ -331,8 +375,12 @@ def main(args):
     x0 = np.concatenate([[kappa], nt_probs, [tau]])
     logx0 = np.log(x0)
 
+    # Initialize the rate hint object.
+    rate_hint_object = RateHint()
+
     # Define the objective function to minimize.
-    f = functools.partial(objective, T, root, data_weight_pairs)
+    f = functools.partial(objective,
+            T, root, data_weight_pairs, rate_hint_object)
 
     # Report something about the initial guess.
     print('initial guess:')
