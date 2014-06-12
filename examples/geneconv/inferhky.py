@@ -187,9 +187,6 @@ def objective(T, root, data, edges, log_params):
     tau = params[5]
     edge_rates = params[6:]
 
-    #NOTE setting tau to zero
-    tau = 0
-
     # normalize the nt probs and get the constraint violation penalty
     nt_sum = nt_weights.sum()
     nt_probs = nt_weights / nt_sum
@@ -279,9 +276,6 @@ def main(args):
     nt_weights = xopt[1:5]
     tau = xopt[5]
 
-    #NOTE setting tau to zero
-    tau = 0
-
     edge_rates = xopt[6:]
     nt_probs = nt_weights / nt_weights.sum()
     print('max likelihood parameter estimates...')
@@ -316,13 +310,13 @@ def main(args):
             geneconv_rate = edge_to_rate[edge] * tau
             pre_G = get_pure_geneconv_pre_Q(4, geneconv_rate)
             edge_to_combination[edge] = pre_G
-    print('computing gene conversion event expectations on edges...')
+    print('computing gene conversion event expectations per site on edges...')
     edge_to_expectation = get_edge_to_expectation(
             T, root, edge_to_R, edge_to_combination,
             root_distn, data_weight_pairs)
     for edge in edges:
         x = edge_to_expectation[edge]
-        print('edge:', edge, 'geneconv event expectation:', x)
+        print('edge:', edge, 'geneconv event expectation:', x / nsites)
     print()
 
     # Compute posterior expected transition event counts.
@@ -336,7 +330,41 @@ def main(args):
             root_distn, data_weight_pairs)
     for edge in edges:
         x = edge_to_expectation[edge]
-        print('edge:', edge, 'total event expectation:', x)
+        print('edge:', edge, 'total event expectation:', x / nsites)
+    print()
+
+    # Compute expected rate opportunity spent in dissimilar paralog states,
+    # on each branch.
+    print('computing a dwell time in dissimilar paralog nt states...')
+    nt_pairs = list(itertools.product('ACGT', repeat=2))
+    indicator = np.array([0 if a==b else 1 for a, b in nt_pairs], dtype=float)
+    edge_to_dwell = {}
+    for edge in edges:
+        edge_rate = edge_to_rate[edge]
+        edge_to_dwell[edge] = np.diag(indicator)
+    edge_to_expectation = get_edge_to_expectation(
+            T, root, edge_to_R, edge_to_dwell,
+            root_distn, data_weight_pairs)
+    for edge in edges:
+        x = edge_to_expectation[edge]
+        print('edge:', edge, 'dwell:', x)
+    print()
+
+    # Compute expected rate opportunity spent in identical paralog states,
+    # on each branch.
+    print('computing a dwell time in identical paralog nt states...')
+    nt_pairs = list(itertools.product('ACGT', repeat=2))
+    indicator = np.array([1 if a==b else 0 for a, b in nt_pairs], dtype=float)
+    edge_to_dwell = {}
+    for edge in edges:
+        edge_rate = edge_to_rate[edge]
+        edge_to_dwell[edge] = np.diag(indicator)
+    edge_to_expectation = get_edge_to_expectation(
+            T, root, edge_to_R, edge_to_dwell,
+            root_distn, data_weight_pairs)
+    for edge in edges:
+        x = edge_to_expectation[edge]
+        print('edge:', edge, 'dwell:', x)
     print()
 
 
