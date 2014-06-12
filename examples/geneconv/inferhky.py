@@ -289,16 +289,22 @@ def main(args):
 
     # Let's do some post-processing to re-estimate
     # branch-specific rates using accelerated EM.
-    edge_to_R, root_distn = get_edge_to_R(T, root, kappa, nt_probs, tau)
+    edge_to_unscaled_R, root_distn = get_edge_to_R(
+            T, root, kappa, nt_probs, tau)
 
     # Use the relatively sophisticated optimizer.
     print('updating edge rates with the sophisticated search...')
     data_weight_pairs = [(x, 1) for x in constraints]
     edge_to_rate, neg_ll = estimate_edge_rates(
-            T, root, edge_to_R, root_distn, data_weight_pairs)
+            T, root, edge_to_unscaled_R, root_distn, data_weight_pairs)
     print('estimated edge rates:', edge_to_rate)
     print('corresponding neg log likelihood:', neg_ll)
     print()
+
+    # Get the scaled rate matrices.
+    edge_to_R = {}
+    for edge in T.edges():
+        edge_to_R[edge] = edge_to_rate[edge] * edge_to_unscaled_R[edge]
 
     # Compute posterior expected gene conversion event counts.
     edge_to_combination = {}
@@ -307,23 +313,23 @@ def main(args):
         if nb == 'Tamarin':
             edge_to_combination[edge] = np.zeros((4*4, 4*4), dtype=float)
         else:
-            geneconv_rate = edge_to_rate[edge] * tau
-            pre_G = get_pure_geneconv_pre_Q(4, geneconv_rate)
+            edge_rate = edge_to_rate[edge]
+            pre_G = get_pure_geneconv_pre_Q(4, edge_rate * tau)
             edge_to_combination[edge] = pre_G
     print('computing gene conversion event expectations per site on edges...')
-    edge_to_expectation = get_edge_to_expectation(
+    edge_to_gc = get_edge_to_expectation(
             T, root, edge_to_R, edge_to_combination,
             root_distn, data_weight_pairs)
     for edge in edges:
-        x = edge_to_expectation[edge]
+        x = edge_to_gc[edge]
         print('edge:', edge, 'geneconv event expectation:', x / nsites)
     print()
 
     # Compute posterior expected transition event counts.
     edge_to_combination = get_edge_to_pre_R(T, root, kappa, nt_probs, tau)
     for edge in edge_to_combination:
-        edge_to_combination[edge] = edge_to_rate[edge] * (
-                edge_to_combination[edge])
+        edge_rate = edge_to_rate[edge]
+        edge_to_combination[edge] = edge_rate * edge_to_combination[edge]
     print('computing total transition event expectations on edges...')
     edge_to_expectation = get_edge_to_expectation(
             T, root, edge_to_R, edge_to_combination,
@@ -341,13 +347,13 @@ def main(args):
     edge_to_dwell = {}
     for edge in edges:
         edge_rate = edge_to_rate[edge]
-        edge_to_dwell[edge] = np.diag(indicator)
-    edge_to_expectation = get_edge_to_expectation(
+        edge_to_dwell[edge] = edge_rate * np.diag(indicator)
+    edge_to_dwell_expectation = get_edge_to_expectation(
             T, root, edge_to_R, edge_to_dwell,
             root_distn, data_weight_pairs)
     for edge in edges:
-        x = edge_to_expectation[edge]
-        print('edge:', edge, 'dwell:', x)
+        x = edge_to_dwell_expectation[edge]
+        print('edge:', edge, 'dwell:', x / nsites)
     print()
 
     # Compute expected rate opportunity spent in identical paralog states,
@@ -358,14 +364,23 @@ def main(args):
     edge_to_dwell = {}
     for edge in edges:
         edge_rate = edge_to_rate[edge]
-        edge_to_dwell[edge] = np.diag(indicator)
+        edge_to_dwell[edge] = edge_rate * np.diag(indicator)
     edge_to_expectation = get_edge_to_expectation(
             T, root, edge_to_R, edge_to_dwell,
             root_distn, data_weight_pairs)
     for edge in edges:
         x = edge_to_expectation[edge]
-        print('edge:', edge, 'dwell:', x)
+        print('edge:', edge, 'dwell:', x / nsites)
     print()
+
+    print('expected number of gene conversion events')
+    print('divided by twice the expected time spent in')
+    print('dissimilar paralog nucleotide states:')
+    for edge in edges:
+        x = edge_to_gc[edge] / (2 * edge_to_dwell_expectation[edge])
+        print('edge:', edge, 'ratio:', x)
+    print()
+
 
 
 if __name__ == '__main__':
