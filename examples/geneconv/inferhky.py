@@ -187,9 +187,6 @@ def objective(T, root, data, edges, log_params):
     tau = params[5]
     edge_rates = params[6:]
 
-    #NOTE setting tau to zero
-    tau = 0
-
     # normalize the nt probs and get the constraint violation penalty
     nt_sum = nt_weights.sum()
     nt_probs = nt_weights / nt_sum
@@ -279,9 +276,6 @@ def main(args):
     nt_weights = xopt[1:5]
     tau = xopt[5]
 
-    #NOTE setting tau to zero
-    tau = 0
-
     edge_rates = xopt[6:]
     nt_probs = nt_weights / nt_weights.sum()
     print('max likelihood parameter estimates...')
@@ -302,9 +296,14 @@ def main(args):
     data_weight_pairs = [(x, 1) for x in constraints]
     edge_to_rate, neg_ll = estimate_edge_rates(
             T, root, edge_to_R, root_distn, data_weight_pairs)
-    print('estimated edge rates:', edge_to_rate)
+    print('re-estimated edge rates:')
+    for edge in edges:
+        print('edge:', edge, 'rate:', edge_to_rate[edge])
     print('corresponding neg log likelihood:', neg_ll)
     print()
+
+    # Compute the number of sites for normalizing expectations.
+    nsites = len(data_weight_pairs)
 
     # Compute posterior expected gene conversion event counts.
     edge_to_combination = {}
@@ -317,26 +316,54 @@ def main(args):
             pre_G = get_pure_geneconv_pre_Q(4, geneconv_rate)
             edge_to_combination[edge] = pre_G
     print('computing gene conversion event expectations on edges...')
-    edge_to_expectation = get_edge_to_expectation(
+    edge_to_geneconv_expectation = get_edge_to_expectation(
             T, root, edge_to_R, edge_to_combination,
             root_distn, data_weight_pairs)
     for edge in edges:
-        x = edge_to_expectation[edge]
-        print('edge:', edge, 'geneconv event expectation:', x)
+        x = edge_to_geneconv_expectation[edge]
+        print('edge:', edge, 'geneconv event expectation per site:', x / nsites)
     print()
 
-    # Compute posterior expected transition event counts.
-    edge_to_combination = get_edge_to_pre_R(T, root, kappa, nt_probs, tau)
+    # Compute posterior expected pure mutation event counts.
+    """
+    pre_Q = get_pure_mutation_pre_Q(single_site_pre_Q)
+    edge_to_combination = {}
     for edge in edge_to_combination:
         edge_to_combination[edge] = edge_to_rate[edge] * (
                 edge_to_combination[edge])
-    print('computing total transition event expectations on edges...')
+    print('computing mutation event expectations on edges...')
     edge_to_expectation = get_edge_to_expectation(
             T, root, edge_to_R, edge_to_combination,
             root_distn, data_weight_pairs)
     for edge in edges:
         x = edge_to_expectation[edge]
         print('edge:', edge, 'total event expectation:', x)
+    print()
+    """
+
+    # Compute posterior expected transition event counts.
+    # For now do not report these total expectations...
+    edge_to_combination = get_edge_to_pre_R(T, root, kappa, nt_probs, tau)
+    for edge in edge_to_combination:
+        edge_to_combination[edge] = edge_to_rate[edge] * (
+                edge_to_combination[edge])
+    #print('computing total transition event expectations on edges...')
+    edge_to_total_expectation = get_edge_to_expectation(
+            T, root, edge_to_R, edge_to_combination,
+            root_distn, data_weight_pairs)
+    for edge in edges:
+        x = edge_to_total_expectation[edge]
+        #print('edge:', edge, 'total event expectation per site:', x / nsites)
+    #print()
+
+    # Report mutation-only expectations per site.
+    print('computing pure mutation event expectations on edges...')
+    for edge in edges:
+        x = edge_to_geneconv_expectation[edge]
+        y = edge_to_total_expectation[edge]
+        print(
+                'edge:', edge,
+                'mutation event expectation per site:', (y - x) / nsites)
     print()
 
 

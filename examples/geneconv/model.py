@@ -176,3 +176,30 @@ def get_pure_geneconv_pre_Q(n, tau):
             pre_R[i, j] = rate
     return pre_R
 
+
+def get_pure_mutation_pre_Q(pre_Q):
+    n = pre_Q.shape[0]
+    assert_equal(pre_Q.shape, (n, n))
+    pre_R = np.zeros((n*n, n*n), dtype=float)
+    nt_pairs = list(itertools.product(range(n), repeat=2))
+    for i, sa in enumerate(nt_pairs):
+        for j, sb in enumerate(nt_pairs):
+            if hamming_distance(sa, sb) != 1:
+                continue
+            sa0, sa1 = sa
+            sb0, sb1 = sb
+            rate = 0
+            if sa0 != sb0:
+                # rate contribution of point mutation from sa0
+                rate += pre_Q[sa0, sb0]
+                #if sa1 == sb0:
+                    # rate contribution of gene conversion from sa1
+                    #rate += tau
+            if sa1 != sb1:
+                # rate contribution of point mutation from sa1
+                rate += pre_Q[sa1, sb1]
+                #if sa0 == sb1:
+                    # rate contribution of gene conversion from sa0
+                    #rate += tau
+            pre_R[i, j] = rate
+    return pre_R

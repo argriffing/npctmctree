@@ -133,7 +133,7 @@ def estimate_edge_rates(T, root, edge_to_Q, root_distn1d, data_weight_pairs,
     # When acceleration fails, as indicated by not reducing the log likelihood,
     # a pure EM step is taken instead of an accelerated EM step.
     # This behavior can be controlled by the backtrack_rate.
-    print('neg log likelihood using unchanged rates:', f(x0))
+    #print('neg log likelihood using unchanged rates:', f(x0))
     result = fixed_point_squarem(em, x0, L=f,
             backtrack_rate=1, atol=1e-8, maxiter=20, maxfun=20)
 
