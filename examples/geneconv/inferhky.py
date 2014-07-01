@@ -324,7 +324,6 @@ def main(args):
         x = edge_to_gc[edge]
         print('edge:', edge, 'geneconv event expectation:', x / nsites)
     print()
-    """
 
     # Compute posterior expected transition event counts.
     # For now do not report these total expectations...
@@ -382,7 +381,6 @@ def main(args):
         x = edge_to_gc[edge] / (2 * edge_to_dwell_expectation[edge])
         print('edge:', edge, 'ratio:', x)
     print()
-
 
 
 if __name__ == '__main__':
