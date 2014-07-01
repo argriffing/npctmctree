@@ -137,7 +137,9 @@ def fixed_point_squarem(func, x0, args=(), L=None, backtrack_rate=0.1,
                 raise _ConvergenceError(msg)
             a_raw = -r_norm / v_norm
             step = functools.partial(_step, x0, r, v)
-            if L is not None:
+            if L is None:
+                a = a_raw
+            else:
                 a = _modify_step_length(a_raw, L, backtrack_rate, step)
             if a == -1:
                 # The step length acceleration has given up

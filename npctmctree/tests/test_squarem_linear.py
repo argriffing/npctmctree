@@ -6,7 +6,7 @@ import numpy as np
 from numpy.linalg import norm
 
 import npctmctree
-from npctmctree.squarem import squarem
+from npctmctree.squarem import fixed_point_squarem
 
 
 def test_linear():
@@ -49,5 +49,5 @@ def test_linear():
     """
 
     #result = squarem(t0, update_em, merit)
-    result = squarem(t0, update_em, method='SqS1')
+    result = fixed_point_squarem(update_em, t0)
     print(result)
