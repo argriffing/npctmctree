@@ -289,21 +289,22 @@ def main(args):
 
     # Let's do some post-processing to re-estimate
     # branch-specific rates using accelerated EM.
-    edge_to_R, root_distn = get_edge_to_R(T, root, kappa, nt_probs, tau)
+    edge_to_unscaled_R, root_distn = get_edge_to_R(
+            T, root, kappa, nt_probs, tau)
 
     # Use the relatively sophisticated optimizer.
     print('updating edge rates with the sophisticated search...')
     data_weight_pairs = [(x, 1) for x in constraints]
     edge_to_rate, neg_ll = estimate_edge_rates(
-            T, root, edge_to_R, root_distn, data_weight_pairs)
-    print('re-estimated edge rates:')
-    for edge in edges:
-        print('edge:', edge, 'rate:', edge_to_rate[edge])
+            T, root, edge_to_unscaled_R, root_distn, data_weight_pairs)
+    print('estimated edge rates:', edge_to_rate)
     print('corresponding neg log likelihood:', neg_ll)
     print()
 
-    # Compute the number of sites for normalizing expectations.
-    nsites = len(data_weight_pairs)
+    # Get the scaled rate matrices.
+    edge_to_R = {}
+    for edge in T.edges():
+        edge_to_R[edge] = edge_to_rate[edge] * edge_to_unscaled_R[edge]
 
     # Compute posterior expected gene conversion event counts.
     edge_to_combination = {}
@@ -312,32 +313,16 @@ def main(args):
         if nb == 'Tamarin':
             edge_to_combination[edge] = np.zeros((4*4, 4*4), dtype=float)
         else:
-            geneconv_rate = edge_to_rate[edge] * tau
-            pre_G = get_pure_geneconv_pre_Q(4, geneconv_rate)
+            edge_rate = edge_to_rate[edge]
+            pre_G = get_pure_geneconv_pre_Q(4, edge_rate * tau)
             edge_to_combination[edge] = pre_G
-    print('computing gene conversion event expectations on edges...')
-    edge_to_geneconv_expectation = get_edge_to_expectation(
+    print('computing gene conversion event expectations per site on edges...')
+    edge_to_gc = get_edge_to_expectation(
             T, root, edge_to_R, edge_to_combination,
             root_distn, data_weight_pairs)
     for edge in edges:
-        x = edge_to_geneconv_expectation[edge]
-        print('edge:', edge, 'geneconv event expectation per site:', x / nsites)
-    print()
-
-    # Compute posterior expected pure mutation event counts.
-    """
-    pre_Q = get_pure_mutation_pre_Q(single_site_pre_Q)
-    edge_to_combination = {}
-    for edge in edge_to_combination:
-        edge_to_combination[edge] = edge_to_rate[edge] * (
-                edge_to_combination[edge])
-    print('computing mutation event expectations on edges...')
-    edge_to_expectation = get_edge_to_expectation(
-            T, root, edge_to_R, edge_to_combination,
-            root_distn, data_weight_pairs)
-    for edge in edges:
-        x = edge_to_expectation[edge]
-        print('edge:', edge, 'total event expectation:', x)
+        x = edge_to_gc[edge]
+        print('edge:', edge, 'geneconv event expectation:', x / nsites)
     print()
     """
 
@@ -345,26 +330,59 @@ def main(args):
     # For now do not report these total expectations...
     edge_to_combination = get_edge_to_pre_R(T, root, kappa, nt_probs, tau)
     for edge in edge_to_combination:
-        edge_to_combination[edge] = edge_to_rate[edge] * (
-                edge_to_combination[edge])
-    #print('computing total transition event expectations on edges...')
-    edge_to_total_expectation = get_edge_to_expectation(
+        edge_rate = edge_to_rate[edge]
+        edge_to_combination[edge] = edge_rate * edge_to_combination[edge]
+    print('computing total transition event expectations on edges...')
+    edge_to_expectation = get_edge_to_expectation(
             T, root, edge_to_R, edge_to_combination,
             root_distn, data_weight_pairs)
     for edge in edges:
-        x = edge_to_total_expectation[edge]
-        #print('edge:', edge, 'total event expectation per site:', x / nsites)
-    #print()
-
-    # Report mutation-only expectations per site.
-    print('computing pure mutation event expectations on edges...')
-    for edge in edges:
-        x = edge_to_geneconv_expectation[edge]
-        y = edge_to_total_expectation[edge]
-        print(
-                'edge:', edge,
-                'mutation event expectation per site:', (y - x) / nsites)
+        x = edge_to_expectation[edge]
+        print('edge:', edge, 'total event expectation:', x / nsites)
     print()
+
+    # Compute expected rate opportunity spent in dissimilar paralog states,
+    # on each branch.
+    print('computing a dwell time in dissimilar paralog nt states...')
+    nt_pairs = list(itertools.product('ACGT', repeat=2))
+    indicator = np.array([0 if a==b else 1 for a, b in nt_pairs], dtype=float)
+    edge_to_dwell = {}
+    for edge in edges:
+        edge_rate = edge_to_rate[edge]
+        edge_to_dwell[edge] = edge_rate * np.diag(indicator)
+    edge_to_dwell_expectation = get_edge_to_expectation(
+            T, root, edge_to_R, edge_to_dwell,
+            root_distn, data_weight_pairs)
+    for edge in edges:
+        x = edge_to_dwell_expectation[edge]
+        print('edge:', edge, 'dwell:', x / nsites)
+    print()
+
+    # Compute expected rate opportunity spent in identical paralog states,
+    # on each branch.
+    print('computing a dwell time in identical paralog nt states...')
+    nt_pairs = list(itertools.product('ACGT', repeat=2))
+    indicator = np.array([1 if a==b else 0 for a, b in nt_pairs], dtype=float)
+    edge_to_dwell = {}
+    for edge in edges:
+        edge_rate = edge_to_rate[edge]
+        edge_to_dwell[edge] = edge_rate * np.diag(indicator)
+    edge_to_expectation = get_edge_to_expectation(
+            T, root, edge_to_R, edge_to_dwell,
+            root_distn, data_weight_pairs)
+    for edge in edges:
+        x = edge_to_expectation[edge]
+        print('edge:', edge, 'dwell:', x / nsites)
+    print()
+
+    print('expected number of gene conversion events')
+    print('divided by twice the expected time spent in')
+    print('dissimilar paralog nucleotide states:')
+    for edge in edges:
+        x = edge_to_gc[edge] / (2 * edge_to_dwell_expectation[edge])
+        print('edge:', edge, 'ratio:', x)
+    print()
+
 
 
 if __name__ == '__main__':
