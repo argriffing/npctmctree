@@ -1,4 +1,4 @@
-NumPy based Continuous Time Markov Chain TREE algorithms
+numpy based continuous time Markov chain tree algorithms
 
 Required dependencies:
  * [Python 2.7+](http://www.python.org/)

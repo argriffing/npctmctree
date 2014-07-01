@@ -245,6 +245,9 @@ def main(args):
             node_to_lmap[node] = lmap
         constraints.append(node_to_lmap)
 
+    # Check that the number of sites equals the number of constraints.
+    assert_equal(nsites, len(constraints))
+
     # Make some initial parameter value guesses.
     edges = list(T.edges())
     kappa = 2.0
@@ -297,7 +300,9 @@ def main(args):
     data_weight_pairs = [(x, 1) for x in constraints]
     edge_to_rate, neg_ll = estimate_edge_rates(
             T, root, edge_to_unscaled_R, root_distn, data_weight_pairs)
-    print('estimated edge rates:', edge_to_rate)
+    print('re-estimated edge rates:')
+    for edge in edges:
+        print('edge:', edge, 'rate:', edge_to_rate[edge])
     print('corresponding neg log likelihood:', neg_ll)
     print()
 
