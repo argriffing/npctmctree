@@ -61,15 +61,13 @@ def check_hky_expectations(t):
     P = expm(Q*t)
     assert_allclose(P.sum(axis=1), 1)
 
-    # Create a coefficient matrix.
-    C = np.ones((n, n)) - np.diag(np.ones(n))
-
     # Create a joint state distribution matrix.
     J = np.diag(nt_probs).dot(P)
     assert_allclose(J.sum(), 1)
 
     # Get the expm frechet matrix.
-    S = expm_frechet(Q*t, C*pre_Q*t, compute_expm=False)
+    C = pre_Q * t
+    S = expm_frechet(Q*t, C, compute_expm=False)
 
     # Get the weighted sum of entries of S.
     expectation_a = ((S / P) * J).sum()
