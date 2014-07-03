@@ -2,10 +2,15 @@
 """
 from __future__ import division, print_function, absolute_import
 
+from itertools import product
+
+import networkx as nx
 import numpy as np
 from numpy.testing import assert_allclose
 
 from scipy.linalg import expm, expm_frechet
+
+from npctmctree.expect import get_edge_to_expectation
 
 
 def _get_hky_pre_Q(kappa, nt_probs):
@@ -67,6 +72,29 @@ def _check_hky_transition_expectations(t):
     # Try an equivalent calculation which does not use P or J.
     expectation_b = np.diag(nt_probs).dot(S).sum()
     assert_allclose(expectation_b, t)
+
+    # Use the library function.
+    T = nx.DiGraph()
+    root = 'N0'
+    edge = ('N0', 'N1')
+    T.add_edge(*edge)
+    edge_to_Q = {edge : Q * t}
+    edge_to_combination = {edge : pre_Q * t}
+    root_distn = nt_probs
+    data_weight_pairs = []
+    for sa, sb in product(range(n), repeat=2):
+        vec_a = np.zeros(n)
+        vec_a[sa] = 1
+        vec_b = np.zeros(n)
+        vec_b[sb] = 1
+        data = {'N0' : vec_a, 'N1' : vec_b}
+        weight = J[sa, sb]
+        data_weight_pairs.append((data, weight))
+    edge_to_expectation = get_edge_to_expectation(
+            T, root, edge_to_Q, edge_to_combination,
+            root_distn, data_weight_pairs)
+    expectation_c = edge_to_expectation[edge]
+    assert_allclose(expectation_c, t)
 
 
 def test_hky_transition_expectations():
