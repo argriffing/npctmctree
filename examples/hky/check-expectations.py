@@ -10,9 +10,6 @@ from numpy.testing import assert_allclose
 from scipy.linalg import expm, expm_frechet
 
 
-
-
-
 def hamming_distance(a, b):
     return sum(1 for x, y in zip(a, b) if x != y)
 
