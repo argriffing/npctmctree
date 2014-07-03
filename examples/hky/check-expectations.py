@@ -72,7 +72,10 @@ def check_hky_expectations(t):
     S = expm_frechet(Q*t, C*pre_Q*t, compute_expm=False)
 
     # Get the weighted sum of entries of S.
-    expectation = ((S / P) * J).sum()
+    expectation_a = ((S / P) * J).sum()
+
+    # Try an equivalent calculation which does not use P or J.
+    expectation_b = np.diag(nt_probs).dot(S).sum()
 
     print('t:', t)
     print('Q:')
@@ -85,7 +88,8 @@ def check_hky_expectations(t):
     print(J)
     print('S:')
     print(S)
-    print('expectation:', expectation)
+    print('expectation_a:', expectation_a)
+    print('expectation_b:', expectation_b)
     print()
 
 
