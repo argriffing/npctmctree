@@ -17,7 +17,9 @@ from scipy.linalg import expm
 import npmctree
 from npmctree.sampling import sample_histories
 
-from model import get_distn_brute, get_combined_pre_Q, get_hky_pre_Q
+from npctmctree import hkymodel
+
+from model import get_distn_brute, get_combined_pre_Q
 
 
 def main(args):
@@ -53,7 +55,7 @@ def main(args):
 
     # Construct the hky rate matrix.
     # Scale it to have expected rate 1.0.
-    pre_Q = get_hky_pre_Q(kappa, nt_probs)
+    pre_Q = hkymodel.get_pre_Q(kappa, nt_probs)
     rates = pre_Q.sum(axis=1)
     expected_rate = np.dot(rates, nt_probs)
     Q = (pre_Q - np.diag(rates)) / expected_rate

@@ -11,28 +11,7 @@ from numpy.testing import assert_allclose
 from scipy.linalg import expm, expm_frechet
 
 from npctmctree.expect import get_edge_to_expectation
-
-
-def _get_hky_pre_Q(kappa, nt_probs):
-    """
-    This is just hky.
-
-    State order is ACGT.
-
-    """
-    n = 4
-    transitions = ((0, 2), (2, 0), (1, 3), (3, 1))
-    pre_Q = np.zeros((n, n), dtype=float)
-    for sa, pa in enumerate(nt_probs):
-        for sb, pb in enumerate(nt_probs):
-            if sa == sb:
-                continue
-            rate = 1.0
-            rate *= pb
-            if (sa, sb) in transitions:
-                rate *= kappa
-            pre_Q[sa, sb] = rate
-    return pre_Q
+from npctmctree import hkymodel
 
 
 def _check_hky_transition_expectations(t):
@@ -41,7 +20,7 @@ def _check_hky_transition_expectations(t):
     nt_probs = np.array([0.1, 0.2, 0.3, 0.4])
 
     # Get an HKY rate matrix with arbitrary expected rate.
-    pre_Q = _get_hky_pre_Q(kappa, nt_probs)
+    pre_Q = hkymodel.get_pre_Q(kappa, nt_probs)
 
     # Rescale the rate matrix to have expected rate of 1.0.
     rates = pre_Q.sum(axis=1)

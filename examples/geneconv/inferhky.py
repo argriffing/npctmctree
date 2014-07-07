@@ -18,12 +18,12 @@ from npmctree.dynamic_lmap_lhood import get_iid_lhoods
 import npctmctree
 from npctmctree.optimize import estimate_edge_rates
 from npctmctree.expect import get_edge_to_expectation
+from npctmctree import hkymodel
 
 from util import ad_hoc_fasta_reader
 from model import (
         get_distn_brute,
         get_tree_info_with_outgroup,
-        get_hky_pre_Q,
         get_combined_pre_Q,
         get_lockstep_pre_Q,
         get_pure_geneconv_pre_Q,
@@ -60,7 +60,7 @@ def get_edge_to_pre_R(T, root, kappa, nt_probs, tau):
 
     """
     # Compute the unscaled nucleotide pre-rate-matrix.
-    pre_Q = get_hky_pre_Q(kappa, nt_probs)
+    pre_Q = hkymodel.get_pre_Q(kappa, nt_probs)
     rates = pre_Q.sum(axis=1)
     scaled_pre_Q = pre_Q / np.dot(rates, nt_probs)
 
@@ -97,7 +97,7 @@ def get_edge_to_R(T, root, kappa, nt_probs, tau):
 
     """
     # Compute the unscaled nucleotide pre-rate-matrix.
-    pre_Q = get_hky_pre_Q(kappa, nt_probs)
+    pre_Q = hkymodel.get_pre_Q(kappa, nt_probs)
     rates = pre_Q.sum(axis=1)
     scaled_pre_Q = pre_Q / np.dot(rates, nt_probs)
 

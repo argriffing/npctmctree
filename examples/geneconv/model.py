@@ -35,26 +35,6 @@ def get_tree_info_with_outgroup():
     return T, root
 
 
-def get_hky_pre_Q(kappa, nt_probs):
-    """
-    This is just hky.
-
-    """
-    n = 4
-    transitions = ((0, 2), (2, 0), (1, 3), (3, 1))
-    pre_Q = np.zeros((n, n), dtype=float)
-    for sa, pa in enumerate(nt_probs):
-        for sb, pb in enumerate(nt_probs):
-            if sa == sb:
-                continue
-            rate = 1.0
-            rate *= pb
-            if (sa, sb) in transitions:
-                rate *= kappa
-            pre_Q[sa, sb] = rate
-    return pre_Q
-
-
 def get_distn_brute(Q):
     """
     This method is slow for huge matrices;

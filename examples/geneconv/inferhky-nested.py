@@ -52,12 +52,12 @@ from npmctree.dynamic_lmap_lhood import get_iid_lhoods
 
 import npctmctree
 from npctmctree.optimize import estimate_edge_rates
+from npctmctree import hkymodel
 
 from util import ad_hoc_fasta_reader
 from model import (
         get_distn_brute,
         get_tree_info_with_outgroup,
-        get_hky_pre_Q,
         get_combined_pre_Q,
         get_lockstep_pre_Q,
         )
@@ -114,7 +114,7 @@ def get_exact_data():
 
     # Construct the hky rate matrix.
     # Scale it to have expected rate 1.0.
-    pre_Q = get_hky_pre_Q(kappa, nt_probs)
+    pre_Q = hkymodel.get_pre_Q(kappa, nt_probs)
     rates = pre_Q.sum(axis=1)
     expected_rate = np.dot(rates, nt_probs)
     Q = (pre_Q - np.diag(rates)) / expected_rate
@@ -185,7 +185,7 @@ def get_log_likelihood(T, root, data_weight_pairs, kappa, nt_probs, tau,
     print('tau:', tau)
 
     # Compute the unscaled nucleotide pre-rate-matrix.
-    pre_Q = get_hky_pre_Q(kappa, nt_probs)
+    pre_Q = hkymodel.get_pre_Q(kappa, nt_probs)
     rates = pre_Q.sum(axis=1)
     scaled_pre_Q = pre_Q / np.dot(rates, nt_probs)
 
@@ -246,7 +246,7 @@ def get_log_likelihood(T, root, data_weight_pairs, kappa, nt_probs, tau,
 
     # Let's do some post-processing to re-estimate
     # branch-specific rates using accelerated EM.
-    #pre_Q = get_hky_pre_Q(kappa, nt_probs)
+    #pre_Q = hkymodel.get_pre_Q(kappa, nt_probs)
     #pre_R = get_combined_pre_Q(pre_Q, tau)
     #R = pre_R - np.diag(pre_R.sum(axis=1))
     #root_distn = get_distn_brute(R)
@@ -346,7 +346,7 @@ def objective(T, root, data_weight_pairs, rate_hint_object, log_params):
 
 
 def main(args):
-    #print(get_hky_pre_Q(1e-5, [0.1, 0.2, 0.3, 0.4]))
+    #print(hkymodel.get_pre_Q(1e-5, [0.1, 0.2, 0.3, 0.4]))
     #return
 
     # Read the hardcoded tree information.
@@ -463,7 +463,7 @@ def main(args):
 
     # Let's do some post-processing to re-estimate
     # branch-specific rates using accelerated EM.
-    pre_Q = get_hky_pre_Q(kappa, nt_probs)
+    pre_Q = hkymodel.get_pre_Q(kappa, nt_probs)
     pre_R = get_combined_pre_Q(pre_Q, tau)
     R = pre_R - np.diag(pre_R.sum(axis=1))
     root_distn = get_distn_brute(R)
