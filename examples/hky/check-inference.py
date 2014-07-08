@@ -8,6 +8,9 @@ The purpose of the EM inference is for comparison to Monte Carlo EM
 for which the observed data is not exact and the conditional expectations
 are computed using Monte Carlo.
 
+Expectation maximization can be modeled after the code in nxctmctree
+which uses Monte Carlo EM with trajectory samples.
+
 """
 from __future__ import division, print_function, absolute_import
 
@@ -25,11 +28,36 @@ from npctmctree import hkymodel
 
 def run_inference(T, root, bfs_edges, leaves,
         data_prob_pairs,
-        init_kappa, init_nt_probs, init_edge_rates,
+        kappa, nt_distn1d, edge_rates,
         ):
     """
+    Run the inference.
+
+    Parameters
+    ----------
+    T : networkx DiGraph
+        Rooted tree.
+    root : hashable node
+        Root of the tree as a hashable networkx node in T.
+    bfs_edges : sequence
+        Ordered edges in a preorder from the root.
+        Each edge is a directed pair of nodes.
+    leaves : sequence
+        Leaf nodes.
+    data_prob_pairs : sequence of pairs
+        Weighted data or simulated data or an exact distribution.
+    kappa : float
+        The rate scaling ratio of transitions to transversions.
+        Nucleotide substitutions A <--> G and C <--> T are called transitions,
+        while all other nucleotide substitutions are called transversions.
+    nt_distn1d : 1d ndarray of floats
+        Mutational nucleotide distribution.
+    edge_rates : 1d ndarray of floats
+        Edge rate scaling factors.
+
     """
-    return 0, 0, 0
+    edge_to_P = get_hky_edge_to_P(T, root, bfs_edges,
+            true_kappa, true_nt_probs, true_edge_rates)
 
 
 def get_hky_edge_to_P(T, root, bfs_edges, kappa, nt_probs, edge_rates):
