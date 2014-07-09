@@ -8,6 +8,8 @@ and with partial observations at nodes of the tree.
 """
 from __future__ import division, print_function, absolute_import
 
+from itertools import permutations
+
 import networkx as nx
 import numpy as np
 
@@ -15,6 +17,77 @@ from numpy.testing import assert_equal
 from scipy.linalg import expm_frechet
 
 from .cyem import conditional_expectation
+
+
+def get_edge_to_dwell(T, root, edge_to_Q, root_distn, data_weight_pairs):
+    """
+    Compute dwell times in each state on each edge, summed over sites.
+
+    Notes
+    -----
+    This function is for generic EM for parameterized rate matrices,
+    and could be further optimized for speed in a way that is similar
+    to the EM functions that are specialized for estimation
+    of edge rate scaling factors.
+
+    """
+    # Define the state space.
+    nstates = root_distn.shape[0]
+    states = range(nstates)
+
+    # Get edges in no particular order.
+    edges = list(edge_to_Q)
+
+    # Compute the map from edge to dwell times.
+    edge_to_dwell = dict((e, np.zeros(nstates)) for e in edges)
+    for s in states:
+        combination = np.zeros((nstates, nstates), dtype=float)
+        combination[s, s] = 1
+        for edge in edges:
+            edge_to_combination[edge] = combination
+        edge_to_expectation = get_edge_to_expectation(
+                T, root, edge_to_Q, edge_to_combination,
+                root_distn, data_weight_pairs)
+        for edge in edges:
+            edge_to_dwell[edge][s] = edge_to_expectation[edge]
+    return edge_to_dwell
+
+
+def get_edge_to_trans(T, root, edge_to_Q, root_distn, data_weight_pairs):
+    """
+    Compute counts for each transition type on each edge, summed over sites.
+
+    Notes
+    -----
+    This function is for generic EM for parameterized rate matrices,
+    and could be further optimized for speed in a way that is similar
+    to the EM functions that are specialized for estimation
+    of edge rate scaling factors.
+
+    """
+    # Define the state space.
+    nstates = root_distn.shape[0]
+    states = range(nstates)
+
+    # Get edges in no particular order.
+    edges = list(edge_to_Q)
+
+    # Compute the map from edge to expected transition counts.
+    edge_to_trans = dict((e, np.zeros((nstates, nstates))) for e in edges)
+    for sa, sb in permutations(states, 2):
+        combination[sa, sb] = 1
+        for edge in edges:
+            Q = edge_to_Q[edge]
+            combination = np.zeros((nstates, nstates), dtype=float)
+            combination[sa, sb] = Q[sa, sb]
+            edge_to_combination[edge] = combination
+        edge_to_expectation = get_edge_to_expectation(
+                T, root, edge_to_Q, edge_to_combination,
+                root_distn, data_weight_pairs)
+        for edge in edges:
+            edge_to_trans[edge][sa, sb] = edge_to_expectation[edge]
+    return edge_to_trans
+
 
 
 def get_edge_to_expectation(T, root, edge_to_Q, edge_to_combination,
@@ -69,6 +142,7 @@ def get_edge_to_expectation(T, root, edge_to_Q, edge_to_combination,
     return edge_to_expectation
 
 
+#TODO add unit tests
 def expectation_function(
         T, node_to_idx, site_weights,
         m,
@@ -82,9 +156,31 @@ def expectation_function(
 
     This function requires highly processed inputs and wraps a cython function.
 
-    """
-    #TODO improve docstring and add unit tests
+    Parameters
+    ----------
+    T : x
+        x
+    node_to_idx : x
+        x
+    site_weights : x
+        x
+    m : x
+        x
+    transq : x
+        x
+    data : x
+        x
+    root_distn : x
+        x
+    combination : x
+        x
 
+    Returns
+    -------
+    x : x
+        x
+
+    """
     # Unpack some stuff.
     nsites, nnodes, nstates = data.shape
 

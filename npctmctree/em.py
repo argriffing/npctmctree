@@ -17,6 +17,8 @@ from .cyem import expectation_step
 
 class EMStorage(object):
     """
+    Use this object across expectation-maximization iterations.
+
     """
     def __init__(self, nsites, nnodes, nstates):
         # allocate some empty arrays
@@ -47,12 +49,35 @@ def em_function(
         scale,
         ):
     """
-    Recast EM as a fixed-point problem.
-    
-    This approach is inspired by the introduction of the following paper.
-    A QUASI-NEWTON ACCELERATION OF THE EM ALGORITHM
-    Kenneth Lange
-    1995
+    This is purely for edge rate scale and does not consider other parameters.
+
+    Parameters
+    ----------
+    T : x
+        x
+    node_to_idx : x
+        x
+    site_weights : x
+        x
+    m : x
+        x
+    transq_unscaled : x
+        x
+    data : x
+        x
+    root_distn1d : x
+        x
+    mem : x
+        x
+    use_log_scale : bool
+        True if the scale argument is in logarithmic units.
+    scale : 1d float ndarray
+        Edge rate scaling factors, possibly in logarithmic units.
+
+    Returns
+    -------
+    scale : 1d float ndarray
+        Updated edge rate scaling factors, possibly in logarithmic units.
 
     """
     #TODO improve docstring and add unit tests

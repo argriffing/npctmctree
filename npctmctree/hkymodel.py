@@ -42,3 +42,17 @@ def get_pre_Q(kappa, nt_distn1d):
         [k*a,   c,   0,   t],
         [  a, k*c,   g,   0]])
 
+
+def get_normalized_Q(kappa, nt_distn1d):
+    """
+    HKY rate matrix normalized to have expected rate 1.
+
+    See get_pre_Q for more details.
+
+    """
+    pre_Q = get_pre_Q(kappa, nt_distn1d)
+    rates_out = pre_Q.sum(axis=1)
+    expected_rate = nt_distn1d.dot(rates_out)
+    Q = (pre_Q - np.diag(rates_out)) / expected_rate
+    return Q
+
