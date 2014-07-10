@@ -15,16 +15,19 @@ which uses Monte Carlo EM with trajectory samples.
 from __future__ import division, print_function, absolute_import
 
 from itertools import product
+from functools import partial
 
 import numpy as np
 import networkx as nx
 from numpy.testing import assert_allclose
 from scipy.special import xlogy
 from scipy.linalg import expm
+from scipy.optimize import minimize
 
 from npmctree import dynamic_fset_lhood
 
-from npctmctree import hkymodel
+from npctmctree import hkymodel, expect
+
 
 
 #NOTE from nxctmctree
@@ -168,18 +171,19 @@ def run_inference(T, root, bfs_edges, leaves,
         edge_to_P = dict((e, expm(Q)) for e, Q in edge_to_Q.items())
         root_state_counts = np.zeros(nstates)
         for data, weight in data_weight_pairs:
-            root_post_distn1d = dynamic_fset_lhood.get_node_to_distn1d(
+            node_to_distn1d = dynamic_fset_lhood.get_node_to_distn1d(
                     T, edge_to_P, root, root_prior_distn1d, data)
+            root_post_distn1d = node_to_distn1d[root]
             root_state_counts += weight * root_post_distn1d
 
         # Get posterior expected dwell times and transition counts.
-        edge_to_dwell_times = get_edge_to_dwell(T, root, edge_to_Q,
-                root_prior_distn1d, data_weight_pairs)
-        edge_to_transition_counts = get_edge_to_trans(T, root, edge_to_Q,
-                root_prior_distn1d, data_weight_pairs)
+        edge_to_dwell_times = expect.get_edge_to_dwell(
+                T, root, edge_to_Q, root_prior_distn1d, data_weight_pairs)
+        edge_to_transition_counts = expect.get_edge_to_trans(
+                T, root, edge_to_Q, root_prior_distn1d, data_weight_pairs)
 
         # Maximization step.
-        f = partial(objective, T, root, edges,
+        f = partial(objective, T, root, bfs_edges,
                 root_state_counts,
                 edge_to_dwell_times,
                 edge_to_transition_counts)

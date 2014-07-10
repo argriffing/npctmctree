@@ -43,6 +43,7 @@ def get_edge_to_dwell(T, root, edge_to_Q, root_distn, data_weight_pairs):
     for s in states:
         combination = np.zeros((nstates, nstates), dtype=float)
         combination[s, s] = 1
+        edge_to_combination = {}
         for edge in edges:
             edge_to_combination[edge] = combination
         edge_to_expectation = get_edge_to_expectation(
@@ -75,7 +76,7 @@ def get_edge_to_trans(T, root, edge_to_Q, root_distn, data_weight_pairs):
     # Compute the map from edge to expected transition counts.
     edge_to_trans = dict((e, np.zeros((nstates, nstates))) for e in edges)
     for sa, sb in permutations(states, 2):
-        combination[sa, sb] = 1
+        edge_to_combination = {}
         for edge in edges:
             Q = edge_to_Q[edge]
             combination = np.zeros((nstates, nstates), dtype=float)
