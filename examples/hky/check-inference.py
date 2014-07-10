@@ -14,7 +14,7 @@ which uses Monte Carlo EM with trajectory samples.
 """
 from __future__ import division, print_function, absolute_import
 
-from itertools import product
+import itertools
 from functools import partial
 
 import numpy as np
@@ -58,11 +58,8 @@ def unpack_params(edges, log_params):
     # Get the transition rate matrix, carefully scaled.
     Q = hkymodel.get_normalized_Q(kappa, nt_distn1d)
 
-    # Get the map from edges to rates.
-    edge_to_rate = dict(zip(edges, edge_rates))
-
     # Return the unpacked parameters.
-    return edge_to_rate, Q, nt_distn1d, kappa, penalty
+    return edge_rates, Q, nt_distn1d, kappa, penalty
 
 
 #TODO replace some code somewhere with a call to the new
@@ -82,13 +79,14 @@ def get_expected_log_likelihood(T, root, edges,
 
     # Log likelihood contribution of dwell times and transitions.
     dwell_ll = 0
+    trans_ll = 0
     for edge in edges:
         dwell_times = edge_to_dwell_times[edge]
         transition_counts = edge_to_transition_counts[edge]
         edge_rate = edge_to_rate[edge]
         Q = edge_to_Q[edge]
         dwell_ll += edge_rate * np.diag(Q).dot(dwell_times)
-        trans_ll += xlogy(transition_counts, edge_rate * Q)
+        trans_ll += xlogy(transition_counts, edge_rate * Q).sum()
     log_likelihood = init_ll + dwell_ll + trans_ll
     return log_likelihood
 
@@ -106,13 +104,15 @@ def objective(T, root, edges,
 
     """
     unpacked = unpack_params(edges, log_params)
-    edge_to_rate, Q, nt_distn1d, kappa, penalty = unpacked
+    edge_rates, Q, nt_distn1d, kappa, penalty = unpacked
+    edge_to_rate = dict(zip(edges, edge_rates))
     edge_to_Q = dict((e, Q) for e in edges)
     root_prior_distn1d = nt_distn1d
     log_likelihood = get_expected_log_likelihood(T, root, edges,
             edge_to_Q, edge_to_rate, root_prior_distn1d,
             root_state_counts, edge_to_dwell_times, edge_to_transition_counts)
-    return -log_likelihood + penalty
+    penalized_neg_ll = -log_likelihood + penalty
+    return penalized_neg_ll
 
 
 def run_inference(T, root, bfs_edges, leaves,
@@ -154,7 +154,8 @@ def run_inference(T, root, bfs_edges, leaves,
     # Look at nxctmctree for a template for the full MLE.
     nstates = nt_distn1d.shape[0]
 
-    while True:
+    for iteration in itertools.count(1):
+        print('iteration:', iteration)
 
         # Use the unpacked parameters to create the carefullly scaled
         # transition rate matrix.
@@ -182,41 +183,29 @@ def run_inference(T, root, bfs_edges, leaves,
         edge_to_transition_counts = expect.get_edge_to_trans(
                 T, root, edge_to_Q, root_prior_distn1d, data_weight_pairs)
 
-        # Maximization step.
+        # Maximization step of EM.
         f = partial(objective, T, root, bfs_edges,
                 root_state_counts,
                 edge_to_dwell_times,
                 edge_to_transition_counts)
+        x0 = pack_params(bfs_edges, edge_rates, nt_distn1d, kappa)
         result = minimize(f, x0, method='L-BFGS-B')
 
+        # Unpack optimization output.
+        log_params = result.x
+        unpacked = unpack_params(bfs_edges, log_params)
+        edge_rates, Q, nt_distn1d, kappa, penalty = unpacked
 
-def get_hky_edge_to_P(T, root, bfs_edges, kappa, nt_probs, edge_rates):
-    """
-    Get the per-edge probability transition matrices under the HKY model.
-
-    Compute the conditional transition probability matrices on edges,
-    under the given parameter values.
-    Use a careful interpretation of rate scaling.
-
-    Parameters
-    ----------
-    x : x
-        x
-
-    Returns
-    -------
-    x : x
-        x
-
-    """
-    pre_Q = hkymodel.get_pre_Q(kappa, nt_probs)
-    rates_out = pre_Q.sum(axis=1)
-    expected_rate = nt_probs.dot(rates_out)
-    Q = (pre_Q - np.diag(rates_out)) / expected_rate
-    edge_to_P = {}
-    for edge, edge_rate in zip(bfs_edges, edge_rates):
-        edge_to_P[edge] = expm(edge_rate * Q)
-    return edge_to_P
+        # Summarize the EM step.
+        edge_to_rate = dict(zip(bfs_edges, edge_rates))
+        print('EM step summary:')
+        print('objective function value:', result.fun)
+        for edge, rate in zip(bfs_edges, edge_rates):
+            print('edge:', edge, 'rate:', rate)
+        print('nucleotide distribution:', nt_distn1d)
+        print('kappa:', kappa)
+        print('penalty:', penalty)
+        print()
 
 
 def main():
@@ -246,8 +235,10 @@ def main():
 
     # Compute the map from edge to transition probability matrix,
     # under the true parameter values.
-    edge_to_P = get_hky_edge_to_P(T, root, bfs_edges,
-            true_kappa, true_nt_probs, true_edge_rates)
+    Q = hkymodel.get_normalized_Q(true_kappa, true_nt_probs)
+    edge_to_P = {}
+    for edge, edge_rate in zip(bfs_edges, true_edge_rates):
+        edge_to_P[edge] = expm(edge_rate * Q)
 
     # Compute the state distribution at the leaves,
     # under the arbitrary 'true' parameter values.
