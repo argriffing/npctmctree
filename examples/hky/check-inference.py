@@ -14,6 +14,7 @@ which uses Monte Carlo EM with trajectory samples.
 """
 from __future__ import division, print_function, absolute_import
 
+import argparse
 import itertools
 from functools import partial
 
@@ -118,6 +119,7 @@ def objective(T, root, edges,
 def run_inference(T, root, bfs_edges, leaves,
         data_weight_pairs,
         kappa, nt_distn1d, edge_rates,
+        max_iterations,
         ):
     """
     Run the inference.
@@ -144,6 +146,8 @@ def run_inference(T, root, bfs_edges, leaves,
         Initial guess for mutational nucleotide distribution.
     edge_rates : 1d ndarray of floats
         Initial guess for the edge rate scaling factors.
+    max_iterations : integer or None
+        Optionally limit the number of iterations.
 
     Returns
     -------
@@ -154,8 +158,15 @@ def run_inference(T, root, bfs_edges, leaves,
     # Look at nxctmctree for a template for the full MLE.
     nstates = nt_distn1d.shape[0]
 
-    for iteration in itertools.count(1):
-        print('iteration:', iteration)
+    for iteration_idx in itertools.count():
+
+        # Check early stop condition.
+        if max_iterations is not None:
+            if iteration_idx >= max_iterations:
+                break
+
+        # Report the EM iteration underway.
+        print('iteration', iteration_idx+1, '...')
 
         # Use the unpacked parameters to create the carefullly scaled
         # transition rate matrix.
@@ -207,8 +218,11 @@ def run_inference(T, root, bfs_edges, leaves,
         print('penalty:', penalty)
         print()
 
+    # Return the maximum likelihood estimates computed with EM.
+    return kappa, nt_distn1d, edge_rates
 
-def main():
+
+def main(args):
 
     # Define the rooted tree shape.
     root = 'N0'
@@ -257,9 +271,15 @@ def main():
     mle_kappa, mle_nt_probs, mle_edge_rates = run_inference(
             T, root, bfs_edges, leaves,
             data_prob_pairs,
-            init_kappa, init_nt_probs, init_edge_rates)
+            init_kappa, init_nt_probs, init_edge_rates,
+            args.iterations,
+            )
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--iterations', type=int,
+            help='restrict the EM to this many iterations')
+    args = parser.parse_args()
+    main(args)
 
