@@ -21,37 +21,12 @@ from functools import partial
 import numpy as np
 import networkx as nx
 from numpy.testing import assert_allclose
-from scipy.special import xlogy
 from scipy.linalg import expm
 from scipy.optimize import minimize
 
 from npmctree import dynamic_fset_lhood
 
 from npctmctree import hkymodel, expect
-
-
-def get_expected_log_likelihood(T, root, edges,
-        edge_to_Q, edge_to_rate, root_prior_distn1d,
-        root_state_counts, edge_to_dwell_times, edge_to_transition_counts):
-    """
-    Expected log likelihood of trajectories.
-
-    """
-    # Log likelihood contribution of root state expectation.
-    init_ll = xlogy(root_state_counts, root_prior_distn1d).sum()
-
-    # Log likelihood contribution of dwell times and transitions.
-    dwell_ll = 0
-    trans_ll = 0
-    for edge in edges:
-        dwell_times = edge_to_dwell_times[edge]
-        transition_counts = edge_to_transition_counts[edge]
-        edge_rate = edge_to_rate[edge]
-        Q = edge_to_Q[edge]
-        dwell_ll += edge_rate * np.diag(Q).dot(dwell_times)
-        trans_ll += xlogy(transition_counts, edge_rate * Q).sum()
-    log_likelihood = init_ll + dwell_ll + trans_ll
-    return log_likelihood
 
 
 #NOTE from nxctmctree
@@ -71,7 +46,8 @@ def objective(T, root, edges,
     edge_to_rate = dict(zip(edges, edge_rates))
     edge_to_Q = dict((e, Q) for e in edges)
     root_prior_distn1d = nt_distn1d
-    log_likelihood = get_expected_log_likelihood(T, root, edges,
+    log_likelihood = expect.get_expected_log_likelihood(
+            T, root, edges,
             edge_to_Q, edge_to_rate, root_prior_distn1d,
             root_state_counts, edge_to_dwell_times, edge_to_transition_counts)
     penalized_neg_ll = -log_likelihood + penalty

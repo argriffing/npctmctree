@@ -15,8 +15,47 @@ import numpy as np
 
 from numpy.testing import assert_equal
 from scipy.linalg import expm_frechet
+from scipy.special import xlogy
 
 from .cyem import conditional_expectation
+
+
+def get_expected_log_likelihood(T, root, edges,
+        edge_to_Q, edge_to_rate, root_prior_distn1d,
+        root_state_counts, edge_to_dwell_times, edge_to_transition_counts):
+    """
+    Expected log likelihood of trajectories.
+
+    Returns
+    -------
+    log_likelihood : float
+        Expected log likelihood.
+
+    Notes
+    -----
+    This function is for generic EM for parameterized rate matrices,
+    and could be further optimized for speed in a way that is similar
+    to the EM functions that are specialized for estimation
+    of edge rate scaling factors.
+    Each Q in the edge_to_Q dict is normalized and does not include the rate
+    in the edge_to_rate dict.
+
+    """
+    # Log likelihood contribution of root state expectation.
+    init_ll = xlogy(root_state_counts, root_prior_distn1d).sum()
+
+    # Log likelihood contribution of dwell times and transitions.
+    dwell_ll = 0
+    trans_ll = 0
+    for edge in edges:
+        dwell_times = edge_to_dwell_times[edge]
+        transition_counts = edge_to_transition_counts[edge]
+        edge_rate = edge_to_rate[edge]
+        Q = edge_to_Q[edge]
+        dwell_ll += edge_rate * np.diag(Q).dot(dwell_times)
+        trans_ll += xlogy(transition_counts, edge_rate * Q).sum()
+    log_likelihood = init_ll + dwell_ll + trans_ll
+    return log_likelihood
 
 
 def get_edge_to_dwell(T, root, edge_to_Q, root_distn, data_weight_pairs):
