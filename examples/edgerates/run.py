@@ -1,4 +1,6 @@
 """
+Some stuff from this example has been moved into the accelem package.
+
 """
 from __future__ import division, print_function, absolute_import
 
@@ -13,8 +15,9 @@ from scipy.linalg import expm, expm_frechet
 import scipy.optimize
 
 import npmctree
-from npmctree.puzzles import sample_distn1d
+from npmctree import dynamic_fset_lhood
 from npmctree.dynamic_fset_lhood import get_lhood, get_edge_to_distn2d
+from npmctree.puzzles import sample_distn1d
 #from npmctree.cy_dynamic_lmap_lhood import get_lhood, get_edge_to_distn2d
 from npmctree.dynamic_lmap_lhood import get_iid_lhoods
 from npmctree.cyfels import iid_likelihoods
@@ -23,11 +26,11 @@ import npctmctree
 from npctmctree.cyem import expectation_step
 
 import npctmctree
-from npctmctree.linesearch import jj97_qn2
+#from npctmctree.linesearch import jj97_qn2
 from npctmctree.derivatives import (
         LikelihoodShapeStorage, get_log_likelihood_info)
 from npctmctree.em import EMStorage, em_function
-from npctmctree.squarem import fixed_point_squarem
+#from npctmctree.squarem import fixed_point_squarem
 from npctmctree.optimize import estimate_edge_rates
 
 
@@ -828,35 +831,8 @@ def main():
 
     # Instead of sampling states at the leaves,
     # find the exact joint distribution of leaf states.
-    states = range(n)
-    # Initialize the distribution over leaf data (yes this is confusing).
-    data_prob_pairs = []
-    for assignment in product(states, repeat=len(leaves)):
-
-        # Get the map from leaf to state.
-        leaf_to_state = dict(zip(leaves, assignment))
-
-        # Define the data associated with this assignment.
-        # All leaf states are fully observed.
-        # All internal states are completely unobserved.
-        node_to_data_fvec1d = {}
-        for node in leaves:
-            state = leaf_to_state[node]
-            fvec1d = np.zeros(n, dtype=bool)
-            fvec1d[state] = True
-            node_to_data_fvec1d[node] = fvec1d
-        for node in internal_nodes:
-            fvec1d = np.ones(n, dtype=bool)
-            node_to_data_fvec1d[node] = fvec1d
-
-        # Compute the likelihood for this data.
-        lhood = get_lhood(T, edge_to_P, root, root_distn1d, node_to_data_fvec1d)
-        data_prob_pairs.append((node_to_data_fvec1d, lhood))
-
-    # Check that the computed joint distribution over leaf states
-    # is actually a distribution.
-    datas, probs = zip(*data_prob_pairs)
-    assert_allclose(sum(probs), 1)
+    data_prob_pairs = dynamic_fset_lhood.get_unconditional_joint_distn(
+            T, edge_to_P, root, root_distn1d, leaves)
 
     # Try to guess the edge-specific scaling factors using EM,
     # starting with an initial guess that is wrong.
