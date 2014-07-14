@@ -56,3 +56,55 @@ def get_normalized_Q(kappa, nt_distn1d):
     Q = (pre_Q - np.diag(rates_out)) / expected_rate
     return Q
 
+
+#NOTE from nxctmctree
+def pack_params(edge_rates, nt_distn1d, kappa):
+    """
+    Pack parameters into a 1d ndarray.
+
+    Parameters
+    ----------
+    edge_rates : 1d ndarray dtype float
+        Edge-specific rates, using a fixed edge order.
+        This function does not care about the identity of the edges;
+        it packs the edge rates into the output array
+        in the same order as the input order.
+    nt_distn1d : 1d ndarray dtype float
+        Mutational nucleotide probabilities, which should sum to 1.
+        It is not technically required that the probabilities sum to 1
+        because a penalty is applied if the constraint is violated.
+    kappa : float
+        A parameter controlling transition vs. transversion rate.
+        This rate is interpreted mutationally (vs. selectionally).
+
+    Returns
+    -------
+    log_params : 1d ndarray dtype float
+        Parameter vector for the purposes of numerical optimization.
+
+    """
+    params = np.concatenate([edge_rates, nt_distn1d, [kappa]])
+    log_params = np.log(params)
+    return log_params
+
+
+#NOTE from nxctmctree
+def unpack_params(edges, log_params):
+    """
+    Unpack parameters from a 1d ndarray.
+
+    """
+    params = np.exp(log_params)
+    nedges = len(edges)
+    edge_rates = params[:nedges]
+    nt_distn1d = params[nedges:nedges+4]
+    penalty = np.square(np.log(nt_distn1d.sum()))
+    nt_distn1d = nt_distn1d / nt_distn1d.sum()
+    kappa = params[-1]
+
+    # Get the transition rate matrix, carefully scaled.
+    Q = get_normalized_Q(kappa, nt_distn1d)
+
+    # Return the unpacked parameters.
+    return edge_rates, Q, nt_distn1d, kappa, penalty
+

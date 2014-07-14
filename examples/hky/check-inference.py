@@ -30,44 +30,6 @@ from npmctree import dynamic_fset_lhood
 from npctmctree import hkymodel, expect
 
 
-
-#NOTE from nxctmctree
-def pack_params(edges, edge_rates, nt_probs, kappa):
-    """
-    Pack parameters into a 1d ndarray.
-
-    """
-    params = np.concatenate([edge_rates, nt_probs, [kappa]])
-    log_params = np.log(params)
-    return log_params
-
-
-#NOTE from nxctmctree
-def unpack_params(edges, log_params):
-    """
-    Unpack parameters from a 1d ndarray.
-
-    """
-    params = np.exp(log_params)
-    nedges = len(edges)
-    edge_rates = params[:nedges]
-    nt_distn1d = params[nedges:nedges+4]
-    penalty = np.square(np.log(nt_distn1d.sum()))
-    nt_distn1d = nt_distn1d / nt_distn1d.sum()
-    kappa = params[-1]
-
-    # Get the transition rate matrix, carefully scaled.
-    Q = hkymodel.get_normalized_Q(kappa, nt_distn1d)
-
-    # Return the unpacked parameters.
-    return edge_rates, Q, nt_distn1d, kappa, penalty
-
-
-#TODO replace some code somewhere with a call to the new
-# npmctree get_unconditional_joint_distribution function.
-# the code to be replaced should be somewhere in npctmctree.
-
-
 def get_expected_log_likelihood(T, root, edges,
         edge_to_Q, edge_to_rate, root_prior_distn1d,
         root_state_counts, edge_to_dwell_times, edge_to_transition_counts):
@@ -104,7 +66,7 @@ def objective(T, root, edges,
     using a transformation of variables.
 
     """
-    unpacked = unpack_params(edges, log_params)
+    unpacked = hkymodel.unpack_params(edges, log_params)
     edge_rates, Q, nt_distn1d, kappa, penalty = unpacked
     edge_to_rate = dict(zip(edges, edge_rates))
     edge_to_Q = dict((e, Q) for e in edges)
@@ -199,12 +161,12 @@ def run_inference(T, root, bfs_edges, leaves,
                 root_state_counts,
                 edge_to_dwell_times,
                 edge_to_transition_counts)
-        x0 = pack_params(bfs_edges, edge_rates, nt_distn1d, kappa)
+        x0 = hkymodel.pack_params(edge_rates, nt_distn1d, kappa)
         result = minimize(f, x0, method='L-BFGS-B')
 
         # Unpack optimization output.
         log_params = result.x
-        unpacked = unpack_params(bfs_edges, log_params)
+        unpacked = hkymodel.unpack_params(bfs_edges, log_params)
         edge_rates, Q, nt_distn1d, kappa, penalty = unpacked
 
         # Summarize the EM step.
