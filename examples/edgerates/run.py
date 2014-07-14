@@ -26,12 +26,12 @@ import npctmctree
 from npctmctree.cyem import expectation_step
 
 import npctmctree
-#from npctmctree.linesearch import jj97_qn2
 from npctmctree.derivatives import (
         LikelihoodShapeStorage, get_log_likelihood_info)
 from npctmctree.em import EMStorage, em_function
-#from npctmctree.squarem import fixed_point_squarem
 from npctmctree.optimize import estimate_edge_rates
+
+from accelem import fixed_point_squarem, jj97_qn2
 
 
 def get_tree_info():

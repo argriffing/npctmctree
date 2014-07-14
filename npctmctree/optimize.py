@@ -14,7 +14,8 @@ from scipy.optimize import minimize
 
 from .derivatives import LikelihoodShapeStorage, get_log_likelihood_info
 from .em import EMStorage, em_function
-#from .squarem import fixed_point_squarem
+
+from accelem import fixed_point_squarem
 
 
 def estimate_edge_rates(T, root, edge_to_Q, root_distn1d, data_weight_pairs,
