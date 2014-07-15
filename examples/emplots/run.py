@@ -19,6 +19,10 @@ import networkx as nx
 from numpy.testing import assert_allclose
 from scipy.linalg import expm, expm_frechet
 from scipy.optimize import minimize
+from scipy.special import xlogy
+
+import npmctree
+from npmctree.dynamic_lmap_lhood import get_iid_lhoods
 
 import npctmctree
 import npctmctree.hkymodel
@@ -71,13 +75,25 @@ class PlotInfo(object):
         return self._validated_iterations(self.observed_data_estimates)
 
 
-def objective(T, root, edges, full_track_summary, log_params):
+def nx_objective(T, root, edges, full_track_summary, log_params):
     unpacked = nxctmctree.hkymodel.unpack_params(edges, log_params)
     edge_to_rate, Q, nt_distn, kappa, penalty = unpacked
     edge_to_Q = dict((e, Q) for e in edges)
     root_prior_distn = nt_distn
     log_likelihood = get_trajectory_log_likelihood(T, root,
             edge_to_Q, edge_to_rate, root_prior_distn, full_track_summary)
+    return -log_likelihood + penalty
+
+
+def observed_objective(T, root, edges, data_count_pairs, log_params):
+    unpacked = npctmctree.hkymodel.unpack_params(edges, log_params)
+    edge_rates, Q, nt_distn1d, kappa, penalty = unpacked
+    edge_to_P = {}
+    for edge, edge_rate in zip(edges, edge_rates):
+        edge_to_P[edge] = expm(edge_rate * Q)
+    node_to_data_lmaps, counts = zip(*data_count_pairs)
+    lhoods = get_iid_lhoods(T, edge_to_P, root, nt_distn1d, node_to_data_lmaps)
+    log_likelihood = xlogy(counts, lhoods).sum()
     return -log_likelihood + penalty
 
 
@@ -175,16 +191,17 @@ def main(args):
         x0_edge_rates = np.array([0.2, 0.2, 0.2, 0.2, 0.2])
         x0_nt_probs = np.array([0.25, 0.25, 0.25, 0.25])
         x0_kappa = 3.0
-        x0 = nxctmctree.hkymodel.pack_params(x0_edge_rates, x0_nt_probs, x0_kappa)
+        x0 = nxctmctree.hkymodel.pack_params(
+                x0_edge_rates, x0_nt_probs, x0_kappa)
         x0 = np.array(x0)
 
         x_sim = nxctmctree.hkymodel.pack_params(edge_rates, nt_probs, kappa)
         x_sim = np.array(x_sim)
         print('objective function value using the sampling parameters:')
-        print(objective(T, root, edges, full_track_summary, x_sim))
+        print(nx_objective(T, root, edges, full_track_summary, x_sim))
         print()
 
-        f = partial(objective, T, root, edges, full_track_summary)
+        f = partial(nx_objective, T, root, edges, full_track_summary)
         result = minimize(f, x0, method='L-BFGS-B')
 
         print(result)
@@ -202,6 +219,51 @@ def main(args):
         value = get_value_of_interest(edge_to_rate, nt_distn, kappa)
         plot_info.add_full_data_estimate(value)
 
+        # mle using only observations at leaves
+
+        # make the node_to_data_lmaps
+        #TODO add a utility function for this
+        data_count_pairs = []
+        nt_to_state = dict((s, i) for i, s in enumerate('ACGT'))
+        nstates = len(nt_to_state)
+        for pattern, count in pattern_to_count.items():
+            node_to_data_lmap = {}
+            for node, nt in zip(leaves, pattern):
+                state = nt_to_state[nt]
+                lmap = np.zeros(nstates, dtype=float)
+                lmap[state] = 1
+                node_to_data_lmap[node] = lmap
+            for node in set(T) - set(leaves):
+                lmap = np.ones(nstates, dtype=float)
+                node_to_data_lmap[node] = lmap
+            data_count_pairs.append((node_to_data_lmap, count))
+
+        # Define some initial guesses for the parameters.
+        x0_edge_rates = np.array([0.2, 0.2, 0.2, 0.2, 0.2])
+        x0_nt_probs = np.array([0.25, 0.25, 0.25, 0.25])
+        x0_kappa = 3.0
+        x0 = nxctmctree.hkymodel.pack_params(
+                x0_edge_rates, x0_nt_probs, x0_kappa)
+        x0 = np.array(x0)
+
+        f = partial(observed_objective, T, root, edges, data_count_pairs)
+        result = minimize(f, x0, method='L-BFGS-B')
+
+        print(result)
+        log_params = result.x
+        unpacked = nxctmctree.hkymodel.unpack_params(edges, log_params)
+        edge_to_rate, Q, nt_distn, kappa, penalty = unpacked
+        print('max likelihood estimates from sampled trajectories:')
+        print('edge to rate:', edge_to_rate)
+        print('nt distn:', nt_distn)
+        print('kappa:', kappa)
+        print('penalty:', penalty)
+        print()
+
+        # Add the maximum likelihood estimate into the plot info.
+        value = get_value_of_interest(edge_to_rate, nt_distn, kappa)
+        plot_info.add_observed_data_estimate(value)
+
     # Draw the plot.
     # Patterned on ctmczoo/two-state.py
     fix, ax = pyplot.subplots()
@@ -211,6 +273,8 @@ def main(args):
             'k--', label='value used for sampling')
     ax.plot(ts, plot_info.get_full_data_estimates(),
             'k:', label='full data estimate')
+    ax.plot(ts, plot_info.get_observed_data_estimates(),
+            'k-', label='observed data estimate')
     legend = ax.legend(loc='upper center')
     pyplot.savefig('monte-carlo-estimates.png')
 
@@ -287,7 +351,7 @@ def unused():
                 full_track_summary.on_track(updated_track)
 
         # This is the M step of EM.
-        f = partial(objective, T, root, edges, full_track_summary)
+        f = partial(nx_objective, T, root, edges, full_track_summary)
         result = minimize(f, packed, method='L-BFGS-B')
         #print(result)
         packed = result.x
@@ -304,14 +368,14 @@ def unused():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--iterations', type=int, default=10,
+    parser.add_argument('--iterations', type=int, default=100,
             help='number of iterations of EM')
-    parser.add_argument('--sites', type=int, default=10000,
+    parser.add_argument('--sites', type=int, default=1000,
             help='number of iid observations')
     parser.add_argument('--burnin', type=int, default=10,
             help=('number of samples of burn-in '
                 'per site per EM iteration, for Rao-Teh sampling'))
-    parser.add_argument('--samples', type=int, default=10,
+    parser.add_argument('--samples', type=int, default=1,
             help=('number of sampled trajectories '
                 'per site per EM iteration, for Rao-Teh sampling'))
     args = parser.parse_args()
