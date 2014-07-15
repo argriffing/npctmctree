@@ -42,12 +42,20 @@ class PlotInfo(object):
     """
     Track the information required to make the plot.
 
+    The following notation is used here:
+    fd : full data
+    od : observed data
+
     """
-    def __init__(self, iterations, true_value):
+    def __init__(self, iterations):
         self.iterations = iterations
-        self.true_value = true_value
         self.full_data_estimates = []
         self.observed_data_estimates = []
+
+        # Set these manually without getters/setters.
+        self.true_value = None
+        self.fd_sample_mle = None
+        self.od_sample_mle = None
 
     def add_full_data_estimate(self, value):
         self.full_data_estimates.append(value)
@@ -61,10 +69,6 @@ class PlotInfo(object):
             raise Exception('expected %s values but observed %s' % (
                 self.iterations, n))
         return arr
-
-    def get_true_value_array(self):
-        # Return an array for plotting.
-        return np.ones(self.iterations) * self.true_value
 
     def get_full_data_estimates(self):
         # Return an array for plotting.
@@ -143,7 +147,7 @@ def main(args):
     #print()
 
     # Do some iterations.
-    plot_info = None
+    plot_info = PlotInfo(args.iterations)
     for iid_iteration_idx in range(args.iterations):
 
         print('iteration', iid_iteration_idx+1, '...')
@@ -165,10 +169,10 @@ def main(args):
         node_to_tm = get_node_to_tm(T, root, edge_to_blen)
         bfs_edges = list(nx.bfs_edges(T, root))
 
-        # Initialize the info for plotting.
-        if plot_info is None:
+        # Initialize the true value for plotting the horizontal line.
+        if plot_info.true_value is None:
             true_value = get_value_of_interest(edge_to_rate, nt_distn, kappa)
-            plot_info = PlotInfo(args.iterations, true_value)
+            plot_info.true_value = true_value
 
         # At each iteration, sample a bunch of trajectories.
         # Accumulate a summary of each bunch of trajectories,
@@ -218,6 +222,8 @@ def main(args):
         # Add the maximum likelihood estimate into the plot info.
         value = get_value_of_interest(edge_to_rate, nt_distn, kappa)
         plot_info.add_full_data_estimate(value)
+        if plot_info.fd_sample_mle is None:
+            plot_info.fd_sample_mle = value
 
         # mle using only observations at leaves
 
@@ -263,20 +269,36 @@ def main(args):
         # Add the maximum likelihood estimate into the plot info.
         value = get_value_of_interest(edge_to_rate, nt_distn, kappa)
         plot_info.add_observed_data_estimate(value)
+        if plot_info.od_sample_mle is None:
+            plot_info.od_sample_mle = value
 
     # Draw the plot.
     # Patterned on ctmczoo/two-state.py
+
+    # define some color styles corresponding to reduced information
+    exact_color = 'black'
+    fd_color = 'slateblue'
+    od_color = 'skyblue'
+
+    # draw the plot
     fix, ax = pyplot.subplots()
     ts = range(1, args.iterations+1)
     ax.set_ylim([0.3, 0.7])
-    ax.plot(ts, plot_info.get_true_value_array(),
-            'k--', label='value used for sampling')
+    ax.set_xlim([min(ts), max(ts)])
+    ax.axhline(plot_info.true_value, color=exact_color, linestyle='-',
+            label='parameter value used for simulation')
+    ax.axhline(plot_info.fd_sample_mle, color=fd_color, linestyle='-',
+            label='initial full data MLE')
+    ax.axhline(plot_info.od_sample_mle, color=od_color, linestyle='-',
+            label='initial observed data MLE')
     ax.plot(ts, plot_info.get_full_data_estimates(),
-            'k:', label='full data estimate')
+            color=fd_color, linestyle=':',
+            label='iid full data MLEs')
     ax.plot(ts, plot_info.get_observed_data_estimates(),
-            'k-', label='observed data estimate')
+            color=od_color, linestyle=':',
+            label='iid observed data MLEs')
     legend = ax.legend(loc='upper center')
-    pyplot.savefig('monte-carlo-estimates.png')
+    pyplot.savefig('monte-carlo-estimates-c.png')
 
 
 def unused():
