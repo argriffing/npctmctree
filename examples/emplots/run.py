@@ -51,6 +51,8 @@ import matplotlib
 matplotlib.use('QT4Agg')
 import matplotlib.pyplot as pyplot
 
+from model import ParamManager
+
 
 class PlotInfo(object):
     """

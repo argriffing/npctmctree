@@ -16,7 +16,7 @@ def _penorm(weights):
 
 
 class ParamManager(object):
-    def __init__(self, edge_labels, nucleotide_labels):
+    def __init__(self, edge_labels, nucleotide_labels='ACGT'):
         self.edge_labels = edge_labels
         self.nucleotide_labels = nucleotide_labels
         self.edge_rates = None
