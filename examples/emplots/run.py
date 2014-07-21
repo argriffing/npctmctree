@@ -255,18 +255,6 @@ def main(args):
 
         print('iteration', iid_iteration_idx+1, '...')
 
-        # Initialize some more stuff before getting the gillespie samples.
-        #edge_to_rate = dict(zip(edges, edge_rates))
-        #edge_to_blen = dict((e, 1) for e in edges)
-        #Q, nt_distn = nxctmctree.hkymodel.create_rate_matrix(nt_probs, kappa)
-        #root_prior_distn = nt_distn
-        #state_to_rate, state_to_distn = gillespie.expand_Q(Q)
-        #edge_to_Q = dict((e, Q) for e in edges)
-        #edge_to_state_to_rate = dict((e, state_to_rate) for e in edges)
-        #edge_to_state_to_distn = dict((e, state_to_distn) for e in edges)
-        #node_to_tm = get_node_to_tm(T, root, edge_to_blen)
-        #bfs_edges = list(nx.bfs_edges(T, root))
-
         # At each iteration, sample a bunch of trajectories.
         # Accumulate a summary of each bunch of trajectories,
         # and also accumulate the leaf pattern.
@@ -286,6 +274,7 @@ def main(args):
         runner = OptimizationRunner(f, true_pman, guess_pman).run()
         print('MLE for fully observed sampled trajectories:')
         print(runner)
+        print()
 
         # Add MLE for full track data to the plot info.
         value = get_value_of_interest(runner.opt_pman)
@@ -303,6 +292,7 @@ def main(args):
         runner = OptimizationRunner(f, true_pman, guess_pman).run()
         print('MLE for leaf-restricted observations in sampled trajectories:')
         print(runner)
+        print()
 
         # Add the leaf data maximum likelihood estimate into the plot info.
         value = get_value_of_interest(runner.opt_pman)
