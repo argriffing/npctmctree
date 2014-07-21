@@ -4,8 +4,8 @@ This is a helper module for code related to the evolutionary model.
 """
 from __future__ import division, print_function, absolute_import
 
+from StringIO import StringIO
 import math
-import io
 
 import networkx
 
@@ -64,14 +64,14 @@ class ParamManager(object):
         return packed, self.penalty
 
     def __str__(self):
-        out = io.StringIO()
+        out = StringIO()
         print('edge rates:', file=out)
-        for edge_label, edge_rate in zip(self.edge_labels, edge_rates):
+        for edge_label, edge_rate in zip(self.edge_labels, self.edge_rates):
             print(edge_label, ':', edge_rate, file=out)
         print('nucleotide distribution parameters:', file=out)
         for nt, p in zip(self.nucleotide_labels, self.nt_probs):
-            print(nt, ':', p)
-        print('kappa:', self.kappa)
-        print('penalty:', self.penalty)
+            print(nt, ':', p, file=out)
+        print('kappa:', self.kappa, file=out)
+        print('penalty:', self.penalty, file=out)
         return out.getvalue().strip()
 

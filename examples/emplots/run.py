@@ -28,22 +28,22 @@ and sets of parameters constrained to sum to 1).
 """
 from __future__ import division, print_function, absolute_import
 
+from StringIO import StringIO
 import argparse
 import random
 
 from functools import partial
-from collections import defaultdict
 
 import numpy as np
 import networkx as nx
 
-from numpy.testing import assert_allclose
+from numpy.testing import assert_allclose, assert_array_less
 from scipy.linalg import expm, expm_frechet
 from scipy.optimize import minimize
 from scipy.special import xlogy
 
 import npmctree
-from npmctree.dynamic_lmap_lhood import get_iid_lhoods
+from npmctree import dynamic_xmap_lhood
 
 import npctmctree
 import npctmctree.hkymodel
@@ -103,6 +103,63 @@ class PlotInfo(object):
         return self._validated_iterations(self.observed_data_estimates)
 
 
+class OptimizationRunner(object):
+    def __init__(self, f, true_pman, guess_pman):
+        self.f = f
+        self.true_pman = true_pman
+        self.guess_pman = guess_pman
+        self.raw_search_result = None
+        self.opt_pman = None
+        self.guess_obj = None
+        self.true_obj = None
+        self.opt_obj = None
+
+    def run(self, verbose=True):
+        true_packed, true_penalty = self.true_pman.get_packed()
+        guess_packed, guess_penalty = self.guess_pman.get_packed()
+        edges = self.true_pman.edge_labels
+
+        # Get the objective function value for some parameter values.
+        self.true_obj = self.f(true_packed) + true_penalty
+        self.guess_obj = self.f(guess_packed) + guess_penalty
+
+        # Get the max likelihood parameter values.
+        result = minimize(self.f, guess_packed, method='L-BFGS-B')
+        self.raw_search_result = result
+        self.opt_pman = ParamManager(edges).set_packed(result.x)
+        self.opt_obj = result.fun
+
+        # Sanity checks.
+        opt_packed, opt_penalty = self.opt_pman.get_packed()
+        assert_allclose(self.f(opt_packed) + opt_penalty, self.opt_obj)
+        assert_array_less(self.opt_obj, self.true_obj)
+        assert_array_less(self.opt_obj, self.guess_obj)
+
+        return self
+
+    def __str__(self):
+        out = StringIO()
+
+        # Report the objective value using the sampling parameters.
+        print('objective values:', file=out)
+        print('using initial guess parameters:', self.guess_obj, file=out)
+        print('using actual sampling parameters:', self.true_obj, file=out)
+        print('using mle parameters:', self.opt_obj, file=out)
+        print(file=out)
+
+        # Report raw optimization output.
+        print('raw optimization search result:', file=out)
+        print(self.raw_search_result, file=out)
+        print(file=out)
+
+        # Report max likelihood parameter estimates.
+        print('max likelihood estimates:', file=out)
+        print(self.opt_pman, file=out)
+        print(file=out)
+
+        return out.getvalue().strip()
+
+
 def full_objective(T, root, edges, full_track_summary, log_params):
     pman = ParamManager(edge_labels=edges).set_packed(log_params)
     edge_to_rate, nt_distn, kappa, penalty = pman.get_explicit()
@@ -122,8 +179,9 @@ def observed_objective(T, root, edges, data_count_pairs, log_params):
     edge_to_P = {}
     for edge, edge_rate in zip(edges, edge_rates):
         edge_to_P[edge] = expm(edge_rate * Q)
-    node_to_data_lmaps, counts = zip(*data_count_pairs)
-    lhoods = get_iid_lhoods(T, edge_to_P, root, nt_distn1d, node_to_data_lmaps)
+    xmaps, counts = zip(*data_count_pairs)
+    lhoods = dynamic_xmap_lhood.get_iid_lhoods(
+            T, edge_to_P, root, nt_distn1d, xmaps)
     log_likelihood = xlogy(counts, lhoods).sum()
     return -log_likelihood + penalty
 
@@ -176,13 +234,14 @@ def main(args):
     T.add_edges_from(edges)
     root = 'N0'
     leaves = ('N2', 'N3', 'N4', 'N5')
+    edge_to_blen = dict((e, 1) for e in edges)
 
     # Define 'managed' parameter values used for simulation.
     true_pman = ParamManager(edges).set_implicit(
             [0.1, 0.2, 0.3, 0.4, 0.5], [0.1, 0.2, 0.3, 0.4], 2.4)
 
     # Define an arbitrary bad guess as 'managed' parameter values.
-    guess_pman = ParamMangager(edges).set_implicit(
+    guess_pman = ParamManager(edges).set_implicit(
             [0.2, 0.2, 0.2, 0.2, 0.2], [0.25, 0.25, 0.25, 0.25], 3.0)
 
     # Initialize the plot info.
@@ -218,79 +277,35 @@ def main(args):
         # state patterns.
         trajectory_summary = FullTrackSummary(T, root, edge_to_blen)
         leaf_state_summary = NodeStateSummary(leaves)
-        for track in gen_unconditional_tracks(T, root, true_pman, args.nsites):
+        for track in gen_unconditional_tracks(T, root, true_pman, args.sites):
             for summary in trajectory_summary, leaf_state_summary:
                 summary.on_track(track)
 
-        # Define the penalized likelihood function for this summary.
-        f = partial(full_objective, T, root, edges, full_track_summary)
+        # Compute MLE for full track data.
+        f = partial(full_objective, T, root, edges, trajectory_summary)
+        runner = OptimizationRunner(f, true_pman, guess_pman).run()
+        print('MLE for fully observed sampled trajectories:')
+        print(runner)
 
-        # Compute the objective value using the sampling parameters.
-        print('objective function value using the sampling parameters:')
-        print(f(true_pman.get_packed())
-        print()
-
-        # Compute max likelihood parameter estimates.
-        result = minimize(f, guess_pman.get_packed(), method='L-BFGS-B')
-        print('raw optimization output:')
-        print(result)
-        print()
-
-        opt_pman = ParamManager(edges).set_packed(result.x)
-        print('max likelihood estimates from sampled trajectories:')
-        print(opt_pman)
-        print()
-
-        # Add the maximum likelihood estimate into the plot info.
-        value = get_value_of_interest(opt_pman)
+        # Add MLE for full track data to the plot info.
+        value = get_value_of_interest(runner.opt_pman)
         plot_info.add_full_data_estimate(value)
         if plot_info.fd_sample_mle is None:
             plot_info.fd_sample_mle = value
 
-        # mle using only observations at leaves
-        #TODO convert this to use the parameter manager...
-
-        # make the node_to_data_lmaps
-        #TODO add a utility function for this
+        # Compute MLE for leaf observations.
+        nt_to_state = dict((i, s) for s, i in enumerate('ACGT'))
         data_count_pairs = []
-        nt_to_state = dict((s, i) for i, s in enumerate('ACGT'))
-        nstates = len(nt_to_state)
-        for pattern, count in pattern_to_count.items():
-            node_to_data_lmap = {}
-            for node, nt in zip(leaves, pattern):
-                state = nt_to_state[nt]
-                lmap = np.zeros(nstates, dtype=float)
-                lmap[state] = 1
-                node_to_data_lmap[node] = lmap
-            for node in set(T) - set(leaves):
-                lmap = np.ones(nstates, dtype=float)
-                node_to_data_lmap[node] = lmap
-            data_count_pairs.append((node_to_data_lmap, count))
-
-        # Define some initial guesses for the parameters.
-        x0_edge_rates = np.array([0.2, 0.2, 0.2, 0.2, 0.2])
-        x0_nt_probs = np.array([0.25, 0.25, 0.25, 0.25])
-        x0_kappa = 3.0
-        x0 = nxctmctree.hkymodel.pack_params(
-                x0_edge_rates, x0_nt_probs, x0_kappa)
-        x0 = np.array(x0)
-
+        for xmap, count in leaf_state_summary.gen_xmap_count_pairs():
+            xmap = dict((node, nt_to_state[nt]) for node, nt in xmap.items())
+            data_count_pairs.append((xmap, count))
         f = partial(observed_objective, T, root, edges, data_count_pairs)
-        result = minimize(f, x0, method='L-BFGS-B')
+        runner = OptimizationRunner(f, true_pman, guess_pman).run()
+        print('MLE for leaf-restricted observations in sampled trajectories:')
+        print(runner)
 
-        print(result)
-        log_params = result.x
-        unpacked = nxctmctree.hkymodel.unpack_params(edges, log_params)
-        edge_to_rate, Q, nt_distn, kappa, penalty = unpacked
-        print('max likelihood estimates from sampled trajectories:')
-        print('edge to rate:', edge_to_rate)
-        print('nt distn:', nt_distn)
-        print('kappa:', kappa)
-        print('penalty:', penalty)
-        print()
-
-        # Add the maximum likelihood estimate into the plot info.
-        value = get_value_of_interest(edge_to_rate, nt_distn, kappa)
+        # Add the leaf data maximum likelihood estimate into the plot info.
+        value = get_value_of_interest(runner.opt_pman)
         plot_info.add_observed_data_estimate(value)
         if plot_info.od_sample_mle is None:
             plot_info.od_sample_mle = value
@@ -321,7 +336,7 @@ def main(args):
             color=od_color, linestyle=':',
             label='iid observed data MLEs')
     legend = ax.legend(loc='upper center')
-    pyplot.savefig('monte-carlo-estimates-d.png')
+    pyplot.savefig('monte-carlo-estimates-e.png')
 
 
 def unused():
