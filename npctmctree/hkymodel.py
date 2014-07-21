@@ -1,10 +1,32 @@
 """
 This is an simple parameterized rate matrix for tests and examples.
 
+In the future, packing and unpacking should be handled elsewhere.
+
 """
 from __future__ import division, print_function, absolute_import
 
+from itertools import permutations
+
+import networkx as nx
 import numpy as np
+
+
+def get_nx_Q(kappa, nt_distn):
+    Q = nx.DiGraph()
+    transitions = ({'A', 'G'}, {'C', 'T'})
+    states = set(nt_distn)
+    for sa, sb in permutations(states, 2):
+        rate = nt_distn[sb]
+        if {sa, sb} in transitions:
+            rate *= kappa
+        Q.add_edge(sa, sb, weight=rate)
+    state_to_rate = Q.out_degree(weight='weight')
+    expected_rate = sum(nt_distn[s] * state_to_rate[s] for s in states)
+    for sa in Q:
+        for sb in Q[sa]:
+            Q[sa][sb]['weight'] /= expected_rate
+    return Q
 
 
 def get_pre_Q(kappa, nt_distn1d):

@@ -18,6 +18,13 @@ ingredients:
     Possibly add another object that is called on each sampled trajectory
     and which accumulates the latter summary.
 
+For parameter management, the notation pman is used for the managed parameters.
+This includes implicit, explicit, and packed representations of
+the parameter list consisting of edge rates, nucleotide distribution,
+and kappa, and it manages parameter transformation and penalization
+to deal with constraints (e.g. parameters constrained to be positive
+and sets of parameters constrained to sum to 1).
+
 """
 from __future__ import division, print_function, absolute_import
 
@@ -95,9 +102,10 @@ class PlotInfo(object):
         return self._validated_iterations(self.observed_data_estimates)
 
 
-def nx_objective(T, root, edges, full_track_summary, log_params):
-    unpacked = nxctmctree.hkymodel.unpack_params(edges, log_params)
-    edge_to_rate, Q, nt_distn, kappa, penalty = unpacked
+def full_objective(T, root, edges, full_track_summary, log_params):
+    pman = ParamManager(edge_labels=edges).set_packed(log_params)
+    edge_to_rate, nt_distn, kappa, penalty = pman.get_explicit()
+    Q = npctmctree.hkymodel.get_nx_Q(kappa, nt_distn)
     edge_to_Q = dict((e, Q) for e in edges)
     root_prior_distn = nt_distn
     log_likelihood = get_trajectory_log_likelihood(T, root,
@@ -106,8 +114,10 @@ def nx_objective(T, root, edges, full_track_summary, log_params):
 
 
 def observed_objective(T, root, edges, data_count_pairs, log_params):
-    unpacked = npctmctree.hkymodel.unpack_params(edges, log_params)
-    edge_rates, Q, nt_distn1d, kappa, penalty = unpacked
+    pman = ParamManager(edge_labels=edges).set_packed(log_params)
+    edge_rates, nt_probs, kappa, penalty = pman.get_implicit()
+    nt_distn1d = np.array(nt_probs)
+    Q = npctmctree.hkymodel.get_normalized_Q(kappa, nt_distn1d)
     edge_to_P = {}
     for edge, edge_rate in zip(edges, edge_rates):
         edge_to_P[edge] = expm(edge_rate * Q)
@@ -218,10 +228,10 @@ def main(args):
         x_sim = nxctmctree.hkymodel.pack_params(edge_rates, nt_probs, kappa)
         x_sim = np.array(x_sim)
         print('objective function value using the sampling parameters:')
-        print(nx_objective(T, root, edges, full_track_summary, x_sim))
+        print(full_objective(T, root, edges, full_track_summary, x_sim))
         print()
 
-        f = partial(nx_objective, T, root, edges, full_track_summary)
+        f = partial(full_objective, T, root, edges, full_track_summary)
         result = minimize(f, x0, method='L-BFGS-B')
 
         print(result)
@@ -314,7 +324,7 @@ def main(args):
             color=od_color, linestyle=':',
             label='iid observed data MLEs')
     legend = ax.legend(loc='upper center')
-    pyplot.savefig('monte-carlo-estimates-c.png')
+    pyplot.savefig('monte-carlo-estimates-d.png')
 
 
 def unused():
@@ -389,7 +399,7 @@ def unused():
                 full_track_summary.on_track(updated_track)
 
         # This is the M step of EM.
-        f = partial(nx_objective, T, root, edges, full_track_summary)
+        f = partial(full_objective, T, root, edges, full_track_summary)
         result = minimize(f, packed, method='L-BFGS-B')
         #print(result)
         packed = result.x

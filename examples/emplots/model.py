@@ -6,6 +6,8 @@ from __future__ import division, print_function, absolute_import
 
 import math
 
+import networkx
+
 
 def _penorm(weights):
     total = sum(weights)
@@ -13,6 +15,7 @@ def _penorm(weights):
     penalty = sqrt_penalty * sqrt_penalty
     probs = [w / total for w in weights]
     return probs, penalty
+
 
 
 class ParamManager(object):
@@ -29,24 +32,27 @@ class ParamManager(object):
         nt_weights = [nt_distn[s] for s in self.nucleotide_labels]
         self.nt_probs, self.penalty = _penorm(nt_weights)
         self.kappa = kappa
+        return self
 
     def set_implicit(self, edge_rates, nt_probs, kappa):
         self.edge_rates = edge_rates
         self.nt_probs, self.penalty = _penorm(nt_probs)
         self.kappa = kappa
+        return self
 
     def set_packed(self, packed):
-        params = [math.exp(p) for x in packed]
+        params = [math.exp(p) for p in packed]
         k, n = 0, len(self.edge_labels)
         self.edge_rates = params[k:k+n]
         k, n = k+n, len(self.nucleotide_labels)
         self.nt_probs, self.penalty = _penorm(params[k:k+n])
         k, n = k+n, 1
         self.kappa, = params[k:k+n]
+        return self
 
     def get_explicit(self):
-        edge_to_rate = zip(self.edge_labels, self.edge_rates)
-        nt_distn = zip(self.nucleotide_labels, self.nt_probs)
+        edge_to_rate = dict(zip(self.edge_labels, self.edge_rates))
+        nt_distn = dict(zip(self.nucleotide_labels, self.nt_probs))
         return edge_to_rate, nt_distn, self.kappa, self.penalty
 
     def get_implicit(self):
