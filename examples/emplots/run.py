@@ -51,7 +51,8 @@ import npctmctree.hkymodel
 import nxctmctree
 import nxctmctree.hkymodel
 from nxctmctree import gillespie
-from nxctmctree.trajectory import get_node_to_tm, FullTrackSummary
+from nxctmctree.trajectory import get_node_to_tm
+from nxctmctree.trajectory import FullTrackSummary, NodeStateSummary
 from nxctmctree.likelihood import get_trajectory_log_likelihood
 
 import matplotlib
@@ -127,17 +128,43 @@ def observed_objective(T, root, edges, data_count_pairs, log_params):
     return -log_likelihood + penalty
 
 
-def get_value_of_interest(edge_to_rate, nt_distn, kappa):
+def get_value_of_interest(pman):
+    edge_to_rate, nt_distn, kappa, penalty = pman.get_explicit()
     edge_of_interest = ('N1', 'N5')
     return edge_to_rate[edge_of_interest]
+
+
+def gen_unconditional_tracks(T, root, pman, ntracks):
+    """
+    Sample and summarize a few trajectories.
+
+    Parameters
+    ----------
+    T : networkx DiGraph
+        The shape of the tree.
+    root : hashable
+        Root node of the tree.
+    pman : ParamManager object
+        Has information about the edge rates, nt distn, and kappa parameter.
+    ntracks : integer
+        Number of requested iid track samples.
+
+    """
+    edge_to_rate, nt_distn, kappa, penalty = pman.get_explicit()
+    Q = npctmctree.hkymodel.get_nx_Q(kappa, nt_distn)
+    edges = list(T.edges())
+    edge_to_Q = dict((e, Q) for e in edges)
+    edge_to_blen = dict((e, 1) for e in edges)
+    for track in gillespie.gen_trajectories(T, root, nt_distn,
+            edge_to_rate, edge_to_blen, edge_to_Q, ntracks):
+        yield track
 
 
 def main(args):
     random.seed(1234)
 
-    # Define the model and the 'true' parameter values.
-
-    # Define an edge ordering.
+    # Define the shape of the tree.
+    # This shape remains constant across the entire analysis.
     edges = (
             ('N0', 'N1'),
             ('N0', 'N2'),
@@ -145,60 +172,41 @@ def main(args):
             ('N1', 'N4'),
             ('N1', 'N5'),
             )
-
-    # Define a rooted tree shape.
     T = nx.DiGraph()
     T.add_edges_from(edges)
     root = 'N0'
     leaves = ('N2', 'N3', 'N4', 'N5')
 
-    # Define edge-specific rate scaling factors.
-    # Define HKY parameter values.
-    true_edge_rates = np.array([0.1, 0.2, 0.3, 0.4, 0.5])
-    true_nt_probs = np.array([0.1, 0.2, 0.3, 0.4])
-    true_kappa = 2.4
+    # Define 'managed' parameter values used for simulation.
+    true_pman = ParamManager(edges).set_implicit(
+            [0.1, 0.2, 0.3, 0.4, 0.5], [0.1, 0.2, 0.3, 0.4], 2.4)
 
+    # Define an arbitrary bad guess as 'managed' parameter values.
+    guess_pman = ParamMangager(edges).set_implicit(
+            [0.2, 0.2, 0.2, 0.2, 0.2], [0.25, 0.25, 0.25, 0.25], 3.0)
 
-    # Report parameter values used for sampling.
-    #print('parameter values used for sampling:')
-    #print('edge to rate:', edge_to_rate)
-    #print('nt distn:', nt_distn)
-    #print('kappa:', kappa)
-    #print()
+    # Initialize the plot info.
+    plot_info = PlotInfo(args.iterations)
 
-    #print('state_to_rate:')
-    #print(state_to_rate)
-    #print('state_to_distn:')
-    #print(state_to_distn)
-    #print()
+    # Set the true value of interest in the plot.
+    plot_info.true_value = get_value_of_interest(true_pman)
 
     # Do some iterations.
-    plot_info = PlotInfo(args.iterations)
     for iid_iteration_idx in range(args.iterations):
 
         print('iteration', iid_iteration_idx+1, '...')
 
-        # Set the current values to the true values.
-        edge_rates = np.array(true_edge_rates)
-        nt_probs = np.array(true_nt_probs)
-        kappa = true_kappa
-
         # Initialize some more stuff before getting the gillespie samples.
-        edge_to_rate = dict(zip(edges, edge_rates))
-        edge_to_blen = dict((e, 1) for e in edges)
-        Q, nt_distn = nxctmctree.hkymodel.create_rate_matrix(nt_probs, kappa)
-        root_prior_distn = nt_distn
-        state_to_rate, state_to_distn = gillespie.expand_Q(Q)
-        edge_to_Q = dict((e, Q) for e in edges)
-        edge_to_state_to_rate = dict((e, state_to_rate) for e in edges)
-        edge_to_state_to_distn = dict((e, state_to_distn) for e in edges)
-        node_to_tm = get_node_to_tm(T, root, edge_to_blen)
-        bfs_edges = list(nx.bfs_edges(T, root))
-
-        # Initialize the true value for plotting the horizontal line.
-        if plot_info.true_value is None:
-            true_value = get_value_of_interest(edge_to_rate, nt_distn, kappa)
-            plot_info.true_value = true_value
+        #edge_to_rate = dict(zip(edges, edge_rates))
+        #edge_to_blen = dict((e, 1) for e in edges)
+        #Q, nt_distn = nxctmctree.hkymodel.create_rate_matrix(nt_probs, kappa)
+        #root_prior_distn = nt_distn
+        #state_to_rate, state_to_distn = gillespie.expand_Q(Q)
+        #edge_to_Q = dict((e, Q) for e in edges)
+        #edge_to_state_to_rate = dict((e, state_to_rate) for e in edges)
+        #edge_to_state_to_distn = dict((e, state_to_distn) for e in edges)
+        #node_to_tm = get_node_to_tm(T, root, edge_to_blen)
+        #bfs_edges = list(nx.bfs_edges(T, root))
 
         # At each iteration, sample a bunch of trajectories.
         # Accumulate a summary of each bunch of trajectories,
@@ -208,50 +216,39 @@ def main(args):
         # The mle computed from the full trajectories should be
         # more accurate than the mle computed from only the leaf
         # state patterns.
-        full_track_summary = FullTrackSummary(T, root, edge_to_blen)
-        pattern_to_count = defaultdict(int)
-        ngillespie = args.sites * args.samples
-        for track in gillespie.gen_trajectories(T, root, root_prior_distn,
-                edge_to_rate, edge_to_blen, edge_to_Q, ngillespie):
-            full_track_summary.on_track(track)
-            pattern = tuple(track.history[v] for v in leaves)
-            pattern_to_count[pattern] += 1
+        trajectory_summary = FullTrackSummary(T, root, edge_to_blen)
+        leaf_state_summary = NodeStateSummary(leaves)
+        for track in gen_unconditional_tracks(T, root, true_pman, args.nsites):
+            for summary in trajectory_summary, leaf_state_summary:
+                summary.on_track(track)
 
-        # Define some initial guesses for the parameters.
-        x0_edge_rates = np.array([0.2, 0.2, 0.2, 0.2, 0.2])
-        x0_nt_probs = np.array([0.25, 0.25, 0.25, 0.25])
-        x0_kappa = 3.0
-        x0 = nxctmctree.hkymodel.pack_params(
-                x0_edge_rates, x0_nt_probs, x0_kappa)
-        x0 = np.array(x0)
+        # Define the penalized likelihood function for this summary.
+        f = partial(full_objective, T, root, edges, full_track_summary)
 
-        x_sim = nxctmctree.hkymodel.pack_params(edge_rates, nt_probs, kappa)
-        x_sim = np.array(x_sim)
+        # Compute the objective value using the sampling parameters.
         print('objective function value using the sampling parameters:')
-        print(full_objective(T, root, edges, full_track_summary, x_sim))
+        print(f(true_pman.get_packed())
         print()
 
-        f = partial(full_objective, T, root, edges, full_track_summary)
-        result = minimize(f, x0, method='L-BFGS-B')
-
+        # Compute max likelihood parameter estimates.
+        result = minimize(f, guess_pman.get_packed(), method='L-BFGS-B')
+        print('raw optimization output:')
         print(result)
-        log_params = result.x
-        unpacked = nxctmctree.hkymodel.unpack_params(edges, log_params)
-        edge_to_rate, Q, nt_distn, kappa, penalty = unpacked
+        print()
+
+        opt_pman = ParamManager(edges).set_packed(result.x)
         print('max likelihood estimates from sampled trajectories:')
-        print('edge to rate:', edge_to_rate)
-        print('nt distn:', nt_distn)
-        print('kappa:', kappa)
-        print('penalty:', penalty)
+        print(opt_pman)
         print()
 
         # Add the maximum likelihood estimate into the plot info.
-        value = get_value_of_interest(edge_to_rate, nt_distn, kappa)
+        value = get_value_of_interest(opt_pman)
         plot_info.add_full_data_estimate(value)
         if plot_info.fd_sample_mle is None:
             plot_info.fd_sample_mle = value
 
         # mle using only observations at leaves
+        #TODO convert this to use the parameter manager...
 
         # make the node_to_data_lmaps
         #TODO add a utility function for this

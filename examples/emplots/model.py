@@ -5,6 +5,7 @@ This is a helper module for code related to the evolutionary model.
 from __future__ import division, print_function, absolute_import
 
 import math
+import io
 
 import networkx
 
@@ -15,7 +16,6 @@ def _penorm(weights):
     penalty = sqrt_penalty * sqrt_penalty
     probs = [w / total for w in weights]
     return probs, penalty
-
 
 
 class ParamManager(object):
@@ -62,3 +62,16 @@ class ParamManager(object):
         params = list(self.edge_rates) + list(self.nt_probs) + [self.kappa]
         packed = [math.log(p) for p in params]
         return packed, self.penalty
+
+    def __str__(self):
+        out = io.StringIO()
+        print('edge rates:', file=out)
+        for edge_label, edge_rate in zip(self.edge_labels, edge_rates):
+            print(edge_label, ':', edge_rate, file=out)
+        print('nucleotide distribution parameters:', file=out)
+        for nt, p in zip(self.nucleotide_labels, self.nt_probs):
+            print(nt, ':', p)
+        print('kappa:', self.kappa)
+        print('penalty:', self.penalty)
+        return out.getvalue().strip()
+
