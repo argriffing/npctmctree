@@ -114,7 +114,7 @@ class OptimizationRunner(object):
         self.true_obj = None
         self.opt_obj = None
 
-    def run(self, verbose=True):
+    def run(self):
         true_packed, true_penalty = self.true_pman.get_packed()
         guess_packed, guess_penalty = self.guess_pman.get_packed()
         edges = self.true_pman.edge_labels
