@@ -63,6 +63,13 @@ class ParamManager(object):
         packed = [math.log(p) for p in params]
         return packed, self.penalty
 
+    def copy(self):
+        # make a shallow copy of each member
+        other = ParamManager(list(self.edge_labels))
+        other.nucleotide_labels = list(self.nucleotide_labels))
+        other.edge_rates = self.edge_rates
+        #TODO unfinished
+
     def __str__(self):
         out = StringIO()
         print('edge rates:', file=out)

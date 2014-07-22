@@ -75,6 +75,7 @@ class PlotInfo(object):
         self.iterations = iterations
         self.full_data_estimates = []
         self.observed_data_estimates = []
+        self.exact_em_estimates = []
 
         # Set these manually without getters/setters.
         self.true_value = None
@@ -86,6 +87,9 @@ class PlotInfo(object):
 
     def add_observed_data_estimate(self, value):
         self.observed_data_estimates.append(value)
+
+    def add_exact_em_estimate(self, value):
+        self.exact_em_estimates.append(value)
 
     def _validated_iterations(self, arr):
         n = len(arr)
@@ -101,6 +105,10 @@ class PlotInfo(object):
     def get_observed_data_estimates(self):
         # Return an array for plotting.
         return self._validated_iterations(self.observed_data_estimates)
+
+    def get_exact_em_estimates(self):
+        # Return an array for plotting.
+        return self._validated_iterations(self.exact_em_estimates)
 
 
 class OptimizationRunner(object):
@@ -186,6 +194,32 @@ def observed_objective(T, root, edges, data_count_pairs, log_params):
     return -log_likelihood + penalty
 
 
+def exact_em_objective(T, root, edges,
+        root_state_counts, edge_to_dwell_times, edge_to_transition_counts,
+        log_params):
+    """
+    Penalized negative expected log likelihood.
+
+    It is penalized if the nucleotide probabilities do not add up to 1.
+    The nucleotide penalties are already forced to be positive
+    using a transformation of variables.
+
+    """
+    pman = ParamManager(edge_labels=edges).set_packed(log_params)
+    edge_rates, nt_probs, kappa, penalty = pman.get_implicit()
+    nt_distn1d = np.array(nt_probs)
+    Q = npctmctree.hkymodel.get_normalized_Q(kappa, nt_distn1d)
+    edge_to_Q = dict((e, Q) for e in edges)
+    edge_to_rate = dict(zip(edges, edge_rates))
+    root_prior_distn1d = nt_distn1d
+    log_likelihood = expect.get_expected_log_likelihood(
+            T, root, edges,
+            edge_to_Q, edge_to_rate, root_prior_distn1d,
+            root_state_counts, edge_to_dwell_times, edge_to_transition_counts)
+    penalized_neg_ll = -log_likelihood + penalty
+    return penalized_neg_ll
+
+
 def get_value_of_interest(pman):
     edge_to_rate, nt_distn, kappa, penalty = pman.get_explicit()
     edge_of_interest = ('N1', 'N5')
@@ -235,6 +269,7 @@ def main(args):
     root = 'N0'
     leaves = ('N2', 'N3', 'N4', 'N5')
     edge_to_blen = dict((e, 1) for e in edges)
+    nt_to_state = dict((i, s) for s, i in enumerate('ACGT'))
 
     # Define 'managed' parameter values used for simulation.
     true_pman = ParamManager(edges).set_implicit(
@@ -250,12 +285,11 @@ def main(args):
     # Set the true value of interest in the plot.
     plot_info.true_value = get_value_of_interest(true_pman)
 
-    # Do some iterations.
+    # For each iteration, independently sample an alignment of iid sites.
     for iid_iteration_idx in range(args.iterations):
 
         print('iteration', iid_iteration_idx+1, '...')
 
-        # At each iteration, sample a bunch of trajectories.
         # Accumulate a summary of each bunch of trajectories,
         # and also accumulate the leaf pattern.
         # For each bunch of trajectories, we will plot the mle
@@ -279,11 +313,8 @@ def main(args):
         # Add MLE for full track data to the plot info.
         value = get_value_of_interest(runner.opt_pman)
         plot_info.add_full_data_estimate(value)
-        if plot_info.fd_sample_mle is None:
-            plot_info.fd_sample_mle = value
 
         # Compute MLE for leaf observations.
-        nt_to_state = dict((i, s) for s, i in enumerate('ACGT'))
         data_count_pairs = []
         for xmap, count in leaf_state_summary.gen_xmap_count_pairs():
             xmap = dict((node, nt_to_state[nt]) for node, nt in xmap.items())
@@ -297,8 +328,96 @@ def main(args):
         # Add the leaf data maximum likelihood estimate into the plot info.
         value = get_value_of_interest(runner.opt_pman)
         plot_info.add_observed_data_estimate(value)
-        if plot_info.od_sample_mle is None:
-            plot_info.od_sample_mle = value
+
+    # Sample a single alignment, for the purposes of examining Monte Carlo EM.
+    print('Sampling a single alignment for testing Monte Carlo EM...')
+    trajectory_summary = FullTrackSummary(T, root, edge_to_blen)
+    leaf_state_summary = NodeStateSummary(leaves)
+    for track in gen_unconditional_tracks(T, root, true_pman, args.sites):
+        for summary in trajectory_summary, leaf_state_summary:
+            summary.on_track(track)
+
+    # Compute max likelihood estimates
+    # using the full data along the entire trajectory.
+    f = partial(full_objective, T, root, edges, trajectory_summary)
+    runner = OptimizationRunner(f, true_pman, guess_pman).run()
+    print('MLE for fully observed sampled trajectories:')
+    print(runner)
+    print()
+    plot_info.fd_sample_mle = get_value_of_interest(runner.opt_pman)
+
+    # Compute max likelihood estimates
+    # using only the observed data at the leaves.
+    data_count_pairs = []
+    for xmap, count in leaf_state_summary.gen_xmap_count_pairs():
+        xmap = dict((node, nt_to_state[nt]) for node, nt in xmap.items())
+        data_count_pairs.append((xmap, count))
+    f = partial(observed_objective, T, root, edges, data_count_pairs)
+    runner = OptimizationRunner(f, true_pman, guess_pman).run()
+    print('MLE for leaf-restricted observations in sampled trajectories:')
+    print(runner)
+    print()
+    plot_info.od_sample_mle = get_value_of_interest(runner.opt_pman)
+
+    # Add the initial parameter value guess to the list of EM estimates.
+    plot_info.add_exact_em_estimate(self, get_value_of_interest(guess_pman))
+
+    # Do some iterations of EM using exact expectations.
+    for em_iteration_idx in range(args.iterations-1):
+
+        # Report the EM iteration underway.
+        print('em iteration', iteration_idx+1, '...')
+
+        # Use the unpacked parameters to create the carefullly scaled
+        # transition rate matrix.
+        Q = hkymodel.get_normalized_Q(kappa, nt_distn1d)
+
+        # Create the edge specific rate matrices,
+        # carefully scaled by the edge-specific rate scaling factors.
+        edge_to_Q = {}
+        for edge, edge_rate in zip(bfs_edges, edge_rates):
+            edge_to_Q[edge] = edge_rate * Q
+
+        # Get posterior expected root distribution.
+        root_prior_distn1d = nt_distn1d
+        edge_to_P = dict((e, expm(Q)) for e, Q in edge_to_Q.items())
+        root_state_counts = np.zeros(nstates)
+        for data, weight in data_weight_pairs:
+            node_to_distn1d = dynamic_fset_lhood.get_node_to_distn1d(
+                    T, edge_to_P, root, root_prior_distn1d, data)
+            root_post_distn1d = node_to_distn1d[root]
+            root_state_counts += weight * root_post_distn1d
+
+        # Get posterior expected dwell times and transition counts.
+        edge_to_dwell_times = expect.get_edge_to_dwell(
+                T, root, edge_to_Q, root_prior_distn1d, data_weight_pairs)
+        edge_to_transition_counts = expect.get_edge_to_trans(
+                T, root, edge_to_Q, root_prior_distn1d, data_weight_pairs)
+
+        # Maximization step of EM.
+        f = partial(objective, T, root, bfs_edges,
+                root_state_counts,
+                edge_to_dwell_times,
+                edge_to_transition_counts)
+        x0 = hkymodel.pack_params(edge_rates, nt_distn1d, kappa)
+        result = minimize(f, x0, method='L-BFGS-B')
+
+        # Unpack optimization output.
+        log_params = result.x
+        unpacked = hkymodel.unpack_params(bfs_edges, log_params)
+        edge_rates, Q, nt_distn1d, kappa, penalty = unpacked
+
+        # Summarize the EM step.
+        edge_to_rate = dict(zip(bfs_edges, edge_rates))
+        print('EM step summary:')
+        print('objective function value:', result.fun)
+        for edge, rate in zip(bfs_edges, edge_rates):
+            print('edge:', edge, 'rate:', rate)
+        print('nucleotide distribution:', nt_distn1d)
+        print('kappa:', kappa)
+        print('penalty:', penalty)
+        print()
+
 
     # Draw the plot.
     # Patterned on ctmczoo/two-state.py
@@ -331,6 +450,7 @@ def main(args):
 
 def unused():
     #TODO put this back into the loop.
+    #TODO this is for Monte Carlo EM with Rao-Teh conditionally sampled tracks.
 
     # Define initial parameter values for the expectation maximization.
     x0_edge_rates = np.array([0.2, 0.2, 0.2, 0.2, 0.2])
@@ -415,30 +535,6 @@ def unused():
         print('penalty:', penalty)
         print()
 
-
-#NOTE from npctmctree/examples/hky/check-inference
-def hky_check_inference_objective(T, root, edges,
-        root_state_counts, edge_to_dwell_times, edge_to_transition_counts,
-        log_params):
-    """
-    Negative expected log likelihood.
-
-    It is penalized if the nucleotide probabilities do not add up to 1.
-    The nucleotide penalties are already forced to be positive
-    using a transformation of variables.
-
-    """
-    unpacked = hkymodel.unpack_params(edges, log_params)
-    edge_rates, Q, nt_distn1d, kappa, penalty = unpacked
-    edge_to_rate = dict(zip(edges, edge_rates))
-    edge_to_Q = dict((e, Q) for e in edges)
-    root_prior_distn1d = nt_distn1d
-    log_likelihood = expect.get_expected_log_likelihood(
-            T, root, edges,
-            edge_to_Q, edge_to_rate, root_prior_distn1d,
-            root_state_counts, edge_to_dwell_times, edge_to_transition_counts)
-    penalized_neg_ll = -log_likelihood + penalty
-    return penalized_neg_ll
 
 
 #NOTE from npctmctree/examples/hky/check-inference
