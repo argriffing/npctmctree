@@ -43,10 +43,12 @@ from scipy.optimize import minimize
 from scipy.special import xlogy
 
 import npmctree
-from npmctree import dynamic_xmap_lhood
+from npmctree import dynamic_fset_lhood, dynamic_xmap_lhood
+from npmctree.util import xmap_to_lmap
 
 import npctmctree
 import npctmctree.hkymodel
+from npctmctree import expect
 
 import nxctmctree
 import nxctmctree.hkymodel
@@ -270,6 +272,7 @@ def main(args):
     leaves = ('N2', 'N3', 'N4', 'N5')
     edge_to_blen = dict((e, 1) for e in edges)
     nt_to_state = dict((i, s) for s, i in enumerate('ACGT'))
+    nstates = 4
 
     # Define 'managed' parameter values used for simulation.
     true_pman = ParamManager(edges).set_implicit(
@@ -359,23 +362,38 @@ def main(args):
     print()
     plot_info.od_sample_mle = get_value_of_interest(runner.opt_pman)
 
+    # Convert xmap count pairs to node_to_lmap count pairs.
+    # The more general observation model is used for exact expectations.
+    data_weight_pairs = []
+    all_nodes = set(T)
+    for xmap, count in data_count_pairs:
+        print(xmap)
+        lmap = xmap_to_lmap(all_nodes, nstates, xmap)
+        data_weight_pairs.append((lmap, count))
+
     # Add the initial parameter value guess to the list of EM estimates.
-    plot_info.add_exact_em_estimate(self, get_value_of_interest(guess_pman))
+    value = get_value_of_interest(guess_pman)
+    plot_info.add_exact_em_estimate(value)
+
+    # Initialize the current parameters for the EM iteration.
+    curr_pman = guess_pman.copy()
 
     # Do some iterations of EM using exact expectations.
     for em_iteration_idx in range(args.iterations-1):
 
         # Report the EM iteration underway.
-        print('em iteration', iteration_idx+1, '...')
+        print('em iteration', em_iteration_idx+1, '...')
 
-        # Use the unpacked parameters to create the carefullly scaled
-        # transition rate matrix.
-        Q = hkymodel.get_normalized_Q(kappa, nt_distn1d)
+        # Unpack the current parameter values.
+        edge_rates, nt_probs, kappa, penalty = curr_pman.get_implicit()
+        nt_distn1d = np.array(nt_probs)
+        Q = npctmctree.hkymodel.get_normalized_Q(kappa, nt_distn1d)
+        edge_to_rate = dict(zip(edges, edge_rates))
 
         # Create the edge specific rate matrices,
         # carefully scaled by the edge-specific rate scaling factors.
         edge_to_Q = {}
-        for edge, edge_rate in zip(bfs_edges, edge_rates):
+        for edge, edge_rate in zip(edges, edge_rates):
             edge_to_Q[edge] = edge_rate * Q
 
         # Get posterior expected root distribution.
@@ -395,28 +413,21 @@ def main(args):
                 T, root, edge_to_Q, root_prior_distn1d, data_weight_pairs)
 
         # Maximization step of EM.
-        f = partial(objective, T, root, bfs_edges,
+        f = partial(exact_em_objective, T, root, edges,
                 root_state_counts,
                 edge_to_dwell_times,
                 edge_to_transition_counts)
-        x0 = hkymodel.pack_params(edge_rates, nt_distn1d, kappa)
-        result = minimize(f, x0, method='L-BFGS-B')
-
-        # Unpack optimization output.
-        log_params = result.x
-        unpacked = hkymodel.unpack_params(bfs_edges, log_params)
-        edge_rates, Q, nt_distn1d, kappa, penalty = unpacked
-
-        # Summarize the EM step.
-        edge_to_rate = dict(zip(bfs_edges, edge_rates))
-        print('EM step summary:')
-        print('objective function value:', result.fun)
-        for edge, rate in zip(bfs_edges, edge_rates):
-            print('edge:', edge, 'rate:', rate)
-        print('nucleotide distribution:', nt_distn1d)
-        print('kappa:', kappa)
-        print('penalty:', penalty)
+        runner = OptimizationRunner(f, true_pman, curr_pman).run()
+        print('EM maximization step optimization info:')
+        print(runner)
         print()
+
+        # Update the plot.
+        value = get_value_of_interest(runner.opt_pman)
+        plot_info.add_exact_em_estimate(value)
+
+        # Update the current parameter values.
+        curr_pman = runner.opt_pman
 
 
     # Draw the plot.
@@ -430,7 +441,7 @@ def main(args):
     # draw the plot
     fix, ax = pyplot.subplots()
     ts = range(1, args.iterations+1)
-    ax.set_ylim([0.3, 0.7])
+    ax.set_ylim([0.1, 0.7])
     ax.set_xlim([min(ts), max(ts)])
     ax.axhline(plot_info.true_value, color=exact_color, linestyle='-',
             label='parameter value used for simulation')
@@ -444,8 +455,12 @@ def main(args):
     ax.plot(ts, plot_info.get_observed_data_estimates(),
             color=od_color, linestyle=':',
             label='iid observed data MLEs')
-    legend = ax.legend(loc='upper center')
-    pyplot.savefig('monte-carlo-estimates-e.png')
+    ax.plot(ts, plot_info.get_exact_em_estimates(),
+            color=od_color, linestyle='--',
+            label='exact EM')
+    #legend = ax.legend(loc='upper center')
+    legend = ax.legend(loc='lower right')
+    pyplot.savefig('monte-carlo-estimates-g.png')
 
 
 def unused():

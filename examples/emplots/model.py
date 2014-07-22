@@ -64,11 +64,13 @@ class ParamManager(object):
         return packed, self.penalty
 
     def copy(self):
-        # make a shallow copy of each member
         other = ParamManager(list(self.edge_labels))
-        other.nucleotide_labels = list(self.nucleotide_labels))
-        other.edge_rates = self.edge_rates
-        #TODO unfinished
+        other.nucleotide_labels = list(self.nucleotide_labels)
+        other.edge_rates = list(self.edge_rates)
+        other.nt_probs = list(self.nt_probs)
+        other.kappa = self.kappa
+        other.penalty = self.penalty
+        return other
 
     def __str__(self):
         out = StringIO()
