@@ -37,7 +37,7 @@ from functools import partial
 import numpy as np
 import networkx as nx
 
-from numpy.testing import assert_allclose, assert_array_less
+from numpy.testing import assert_allclose, assert_array_less, assert_equal
 from scipy.linalg import expm, expm_frechet
 from scipy.optimize import minimize
 from scipy.special import xlogy
@@ -52,7 +52,7 @@ from npctmctree import expect
 
 import nxctmctree
 import nxctmctree.hkymodel
-from nxctmctree import gillespie
+from nxctmctree import gillespie, raoteh
 from nxctmctree.trajectory import get_node_to_tm
 from nxctmctree.trajectory import FullTrackSummary, NodeStateSummary
 from nxctmctree.likelihood import get_trajectory_log_likelihood
@@ -62,6 +62,32 @@ matplotlib.use('QT4Agg')
 import matplotlib.pyplot as pyplot
 
 from model import ParamManager
+
+
+#TODO put this somewhere more useful
+def xmap_to_fmap(all_nodes, all_states, xmap, validate=True):
+    """
+    Convert from a more restricted to a less restricted observation format.
+
+    """
+    all_states = set(all_states)
+    all_nodes = set(all_nodes)
+    observed_nodes = set(xmap)
+    hidden_nodes = all_nodes - observed_nodes
+    if validate:
+        extra_nodes = observed_nodes - all_nodes
+        if extra_nodes:
+            raise ValueError('extra nodes: %s' % extra_nodes)
+        observed_states = set(xmap.values())
+        extra_states = observed_states - all_states
+        if extra_states:
+            raise ValueError('extra states: %s' % extra_states)
+    node_to_fset = {}
+    for node, state in xmap.items():
+        node_to_fset[node] = {state}
+    for node in hidden_nodes:
+        node_to_fset[node] = all_states
+    return node_to_fset
 
 
 class PlotInfo(object):
@@ -78,6 +104,7 @@ class PlotInfo(object):
         self.full_data_estimates = []
         self.observed_data_estimates = []
         self.exact_em_estimates = []
+        self.stochastic_em_estimates = []
 
         # Set these manually without getters/setters.
         self.true_value = None
@@ -92,6 +119,9 @@ class PlotInfo(object):
 
     def add_exact_em_estimate(self, value):
         self.exact_em_estimates.append(value)
+
+    def add_stochastic_em_estimate(self, value):
+        self.stochastic_em_estimates.append(value)
 
     def _validated_iterations(self, arr):
         n = len(arr)
@@ -111,6 +141,10 @@ class PlotInfo(object):
     def get_exact_em_estimates(self):
         # Return an array for plotting.
         return self._validated_iterations(self.exact_em_estimates)
+
+    def get_stochastic_em_estimates(self):
+        # Return an array for plotting.
+        return self._validated_iterations(self.stochastic_em_estimates)
 
 
 class OptimizationRunner(object):
@@ -380,9 +414,7 @@ def main(args):
 
     # Do some iterations of EM using exact expectations.
     for em_iteration_idx in range(args.iterations-1):
-
-        # Report the EM iteration underway.
-        print('em iteration', em_iteration_idx+1, '...')
+        print('exact em iteration', em_iteration_idx+1, '...')
 
         # Unpack the current parameter values.
         edge_rates, nt_probs, kappa, penalty = curr_pman.get_implicit()
@@ -429,6 +461,83 @@ def main(args):
         # Update the current parameter values.
         curr_pman = runner.opt_pman
 
+    # Use data-conditioned Rao-Teh track samples for Monte Carlo EM.
+    # For each Monte Carlo EM iteration, for each site,
+    # begin with the corresponding track from the previous iteration,
+    # and run a few burn-in Rao-Teh iterations.
+    # Use only the last Rao-Teh track for the summary.
+
+    # Initialize tracks.
+    track_list = [None] * args.sites
+
+    # Initialize node to fset data for each site using leaf summary.
+    data_list = []
+    all_nodes = set(T)
+    all_states = set('ACGT')
+    for xmap in leaf_state_summary.gen_xmaps_with_repetition():
+        node_to_fset = xmap_to_fmap(all_nodes, all_states, xmap)
+        data_list.append(node_to_fset)
+
+    # Add the initial parameter value guess to the list of EM estimates.
+    value = get_value_of_interest(guess_pman)
+    plot_info.add_stochastic_em_estimate(value)
+
+    # Initialize the current parameters for the EM iteration.
+    curr_pman = guess_pman.copy()
+
+    # Sanity checking.
+    assert_equal(len(track_list), len(data_list))
+
+    for em_iteration_idx in range(args.iterations-1):
+        print('stochastic em iteration', em_iteration_idx+1, '...')
+
+        # Unpack the parameter values to be used in this EM iteration.
+        edge_to_rate, nt_distn, kappa, penalty = curr_pman.get_explicit()
+        Q = npctmctree.hkymodel.get_nx_Q(kappa, nt_distn)
+        edges = list(T.edges())
+        edge_to_Q = dict((e, Q) for e in edges)
+        edge_to_blen = dict((e, 1) for e in edges)
+        root_prior_distn = nt_distn
+
+        # Initialize the summary object for the EM iteration.
+        trajectory_summary = FullTrackSummary(T, root, edge_to_blen)
+
+        # For each track, burn in a few Rao-Teh iterations
+        # and take a single track sample.
+        next_track_list = []
+        for track, node_to_data_fset in zip(track_list, data_list):
+            
+            # Burn in a few iterations.
+            for updated_track in raoteh.gen_raoteh_trajectories(
+                    T, edge_to_Q, root, root_prior_distn, node_to_data_fset,
+                    edge_to_blen, edge_to_rate, all_states,
+                    initial_track=track, ntrajectories=args.burnin):
+                track = updated_track
+
+            # Sample a single extra track.
+            for updated_track in raoteh.gen_raoteh_trajectories(
+                    T, edge_to_Q, root, root_prior_distn, node_to_data_fset,
+                    edge_to_blen, edge_to_rate, all_states,
+                    initial_track=track, ntrajectories=1):
+                track = updated_track
+
+            # Summarize the track and add it to the list.
+            trajectory_summary.on_track(track)
+            next_track_list.append(track)
+
+        # Compute MLE for full track data.
+        f = partial(full_objective, T, root, edges, trajectory_summary)
+        runner = OptimizationRunner(f, true_pman, curr_pman).run()
+        print('MLE for Monte Carlo EM trajectories:')
+        print(runner)
+        print()
+
+        # Add MLE for full track data to the plot info.
+        value = get_value_of_interest(runner.opt_pman)
+        plot_info.add_stochastic_em_estimate(value)
+
+        # Update the parameter values for the next EM iteration.
+        curr_pman = runner.opt_pman
 
     # Draw the plot.
     # Patterned on ctmczoo/two-state.py
@@ -437,6 +546,8 @@ def main(args):
     exact_color = 'black'
     fd_color = 'slateblue'
     od_color = 'skyblue'
+    exact_em_color = 'green'
+    stoch_em_color = 'limegreen'
 
     # draw the plot
     fix, ax = pyplot.subplots()
@@ -456,11 +567,14 @@ def main(args):
             color=od_color, linestyle=':',
             label='iid observed data MLEs')
     ax.plot(ts, plot_info.get_exact_em_estimates(),
-            color=od_color, linestyle='--',
+            color=exact_em_color, linestyle='--',
             label='exact EM')
+    ax.plot(ts, plot_info.get_stochastic_em_estimates(),
+            color=stoch_em_color, linestyle='--',
+            label='Monte Carlo EM')
     #legend = ax.legend(loc='upper center')
     legend = ax.legend(loc='lower right')
-    pyplot.savefig('monte-carlo-estimates-g.png')
+    pyplot.savefig('monte-carlo-estimates-h.png')
 
 
 def unused():
