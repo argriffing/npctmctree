@@ -539,6 +539,9 @@ def main(args):
         # Update the parameter values for the next EM iteration.
         curr_pman = runner.opt_pman
 
+        # Update the track list.
+        track_list = next_track_list
+
     # Draw the plot.
     # Patterned on ctmczoo/two-state.py
 
