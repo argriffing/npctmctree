@@ -135,9 +135,32 @@ def get_edge_to_expectation(T, root, edge_to_Q, edge_to_combination,
     """
     This function does not require highly processed inputs.
 
-    """
-    #TODO more docstring and unit tests
+    Parameters
+    ----------
+    T : networkx DiGraph
+        The directed tree graph.
+    root : hashable
+        Root of the tree.
+    edge_to_Q : dict
+        Map from edge to unit scaled numpy transition rate matrix.
+    edge_to_combination : dict
+        Map from edge to an ndarray specifying the expectation request.
+    root_distn : 1d ndarray
+        Prior state distribution at the root, as a 1d ndarray.
+    data_weight_pairs : sequence of (data, weight) pairs
+        Observed data from which to compute conditional expectations.
+        For each pair in the sequence, the data consists of a map from
+        nodes in the tree to an ndarray defining observation likelihoods
+        conditional on each potential state at the node.
 
+    Returns
+    -------
+    edge_to_expectation : dict
+        Map from each edge to the weighted sum of expectations on the edge.
+        Note that because of linearity of expectation, a weighted sum
+        of expectations is the expectation of the weighted sum.
+
+    """
     # Define a toposort node ordering and a corresponding csr matrix.
     nodes = nx.topological_sort(T, [root])
     node_to_idx = dict((na, i) for i, na in enumerate(nodes))
