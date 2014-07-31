@@ -507,18 +507,11 @@ def main(args):
         next_track_list = []
         for track, node_to_data_fset in zip(track_list, data_list):
             
-            # Burn in a few iterations.
+            # Burn in a few iterations and sample a single track.
             for updated_track in raoteh.gen_raoteh_trajectories(
                     T, edge_to_Q, root, root_prior_distn, node_to_data_fset,
                     edge_to_blen, edge_to_rate, all_states,
-                    initial_track=track, ntrajectories=args.burnin):
-                track = updated_track
-
-            # Sample a single extra track.
-            for updated_track in raoteh.gen_raoteh_trajectories(
-                    T, edge_to_Q, root, root_prior_distn, node_to_data_fset,
-                    edge_to_blen, edge_to_rate, all_states,
-                    initial_track=track, ntrajectories=1):
+                    initial_track=track, nburnin=args.burnin, nsamples=1):
                 track = updated_track
 
             # Summarize the track and add it to the list.
