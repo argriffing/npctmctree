@@ -4,13 +4,7 @@ import numpy as np
 import networkx as nx
 from numpy.testing import assert_array_equal
 
-from scipy.linalg import expm
-from scipy.optimize import minimize
-
-from npmctree import dynamic_fset_lhood
-
 from npctmctree import expect
-
 
 def main():
 
