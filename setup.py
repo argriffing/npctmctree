@@ -27,7 +27,7 @@ setup(
         author='alex',
         url='https://github.com/argriffing/npctmctree/',
         download_url='https://github.com/argriffing/npctmctree/',
-        packages=['npctmctree'],
+        packages=['npctmctree', 'npctmctree.models'],
         test_suite='nose.collector',
         package_data={'npctmctree' : ['tests/test_*.py']},
         cmdclass={'build_ext' : build_ext},
