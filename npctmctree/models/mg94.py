@@ -2,7 +2,6 @@
 Muse-Gaut 1994 continuous-time Markov model of codon evolution.
 
 """
-
 from StringIO import StringIO
 
 import numpy as np
@@ -11,10 +10,39 @@ from scipy.sparse import csr_matrix, coo_matrix
 
 import genetic
 
+__all__ = ['MG94_Abstract', 'MG94_Concrete']
+
+
+def _gen_site_changes(sa, sb):
+    for a, b in zip(sa, sb):
+        if a != b:
+            yield a, b
+
 
 # Instances are not associated with actual parameter values.
 class MG94_Abstract(object):
     def __init__(self):
+        nts = 'acgt'
+        nt_to_idx = dict((nt, i) for i, nt in enumerate(nts))
+        resids = []
+        codons = []
+        for line in StringIO(genetic.code).readlines():
+            si, resid, codon = line.strip().split()
+            if resid != 'stop':
+                resids.append(resid)
+                codons.append(codon)
+        ncodons = len(codons)
+        assert_equal(ncodons, 61)
+
+    #TODO under construction
+    def get_structural_transitions(self):
+        """
+        Yield (row, col) pairs corresponding to allowed transitions.
+
+        These transitions may have zero rate for specific parameter values,
+        but they are not forbidden by the structure of the model itself.
+
+        """
         pass
 
     def get_state_space_size(self):
@@ -132,15 +160,6 @@ class MG94_Concrete(object):
         return self.R_dense
 
 
-def _hamming_distance(a, b):
-    return sum(1 for x, y in zip(a, b) if x != y)
-
-
-def _get_nt_change(ca, cb):
-    if _hamming_distance(ca, cb) == 1:
-        for a, b in zip(ca, cb):
-            if a != b:
-                return a, b
 
 
 def _get_distn_and_triples(kappa, omega, nt_probs):
@@ -185,9 +204,9 @@ def _get_distn_and_triples(kappa, omega, nt_probs):
         ri, ci = resids[i], codons[i]
         for j in range(ncodons):
             rj, cj = resids[j], codons[j]
-            pair = _get_nt_change(ci, cj)
-            if pair is not None:
-                ni, nj = pair
+            pairs = list(_gen_site_changes(ci, cj))
+            if len(pairs) == 1:
+                ni, nj = pairs[0]
                 rate = np.prod([
                     nt_probs[nt_to_idx[nj]],
                     kappa if ni+nj in nt_transitions else 1,

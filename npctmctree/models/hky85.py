@@ -10,6 +10,8 @@ from scipy.sparse import csr_matrix, coo_matrix
 
 import genetic
 
+__all__ = ['HKY85_Abstract', 'HKY85_Concrete']
+
 
 # Instances are not associated with actual parameter values.
 class HKY85_Abstract(object):
@@ -67,7 +69,7 @@ class HKY85_Concrete(object):
             self.x = self._pack_params(self.nt_probs, self.kappa)
         return self.x
 
-    def _pack_params(self, nt_distn1d, kappa, omega):
+    def _pack_params(self, nt_distn1d, kappa):
         # helper function
         # This differs from the module-level function by not caring
         # about edge specific parameters.
@@ -101,7 +103,7 @@ class HKY85_Concrete(object):
     def _process_dense(self):
         if self.Q_sparse is None:
             self._process_sparse()
-        self.Q_dense = self.Q_sparse.A - np.diag(self.exit_rates)
+        self.Q_dense = self.Q_sparse.A
 
     def get_distribution(self):
         if self.distn is None:
@@ -115,20 +117,15 @@ class HKY85_Concrete(object):
 
     def get_sparse_rates(self):
         # return a scipy.sparse.coo_matrix with zeros on diagonals
-        if self.R_sparse:
+        if self.Q_sparse:
             self._process_sparse()
-        return self.R_sparse
+        return self.Q_sparse
 
     def get_dense_rates(self):
         # return a 2d rate matrix with zeros on diagonals
-        if self.R_dense is None:
+        if self.Q_dense is None:
             self._process_dense()
-        return self.R_dense
-
-
-def _hamming_distance(a, b):
-    return sum(1 for x, y in zip(a, b) if x != y)
-
+        return self.Q_dense
 
 
 def _get_distn_and_triples(kappa, nt_probs):
