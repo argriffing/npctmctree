@@ -8,16 +8,13 @@ import numpy as np
 from numpy.testing import assert_equal
 from scipy.sparse import csr_matrix, coo_matrix
 
-import genetic
+from .base import AbstractModel, ConcreteModel
 
 __all__ = ['HKY85_Abstract', 'HKY85_Concrete']
 
 
 # Instances are not associated with actual parameter values.
-class HKY85_Abstract(object):
-    def __init__(self):
-        pass
-
+class HKY85_Abstract(AbstractModel):
     def get_state_space_size(self):
         return 4
 
@@ -26,9 +23,7 @@ class HKY85_Abstract(object):
 
 
 # instances are associated with actual parameter values
-# TODO After a few models have been defined,
-# TODO make a base class with the common methods.
-class HKY85_Concrete(object):
+class HKY85_Concrete(ConcreteModel):
     def __init__(self, x=None):
         """
         It is important that x can be an unconstrained vector
@@ -46,15 +41,6 @@ class HKY85_Concrete(object):
 
         # Mark some downstream attributes as not initialized.
         self._invalidate()
-
-    def _invalidate(self):
-        # this is called internally when parameter values change
-        self.x = None
-        self.distn = None
-        self.triples = None
-        self.exit_rates = None
-        self.Q_sparse = None
-        self.Q_dense = None
 
     def set_kappa(self, kappa):
         self.kappa = kappa
@@ -90,42 +76,12 @@ class HKY85_Concrete(object):
         kappa = params[-1:]
         return nt_distn1d, kappa, penalty
 
-    def get_canonicalization_penalty(self):
-        return self.penalty
-
     def _process_sparse(self):
         self.distn, self.triples = _get_distn_and_triples(
                 self.kappa, self.nt_probs)
         row, col, data = zip(*self.triples)
         self.Q_sparse = coo_matrix((data, (row, col)))
         self.exit_rates = Q_sparse.sum(axis=1)
-
-    def _process_dense(self):
-        if self.Q_sparse is None:
-            self._process_sparse()
-        self.Q_dense = self.Q_sparse.A
-
-    def get_distribution(self):
-        if self.distn is None:
-            self._process_sparse()
-        return self.distn
-    
-    def get_exit_rates(self):
-        if self.exit_rates is None:
-            self._process_sparse()
-        return self.exit_rates
-
-    def get_sparse_rates(self):
-        # return a scipy.sparse.coo_matrix with zeros on diagonals
-        if self.Q_sparse:
-            self._process_sparse()
-        return self.Q_sparse
-
-    def get_dense_rates(self):
-        # return a 2d rate matrix with zeros on diagonals
-        if self.Q_dense is None:
-            self._process_dense()
-        return self.Q_dense
 
 
 def _get_distn_and_triples(kappa, nt_probs):
